@@ -1,0 +1,38 @@
+echo '🏗️👷 Styling, testing and building your project before committing'
+
+# Check Prettier standards
+bun check-format ||
+    (
+        echo 'Prettier Check Failed. Run bun format, add changes and try commit again.'
+        false
+    )
+
+# Check ESLint Standards
+bun check-lint ||
+    (
+        echo 'ESLint Check Failed. Make the required changes listed above, add changes and try to commit again.'
+        false
+    )
+
+# Check tsconfig standards
+bun check-types ||
+    (
+        echo 'Failed Type check. Make the changes required above.'
+        false
+    )
+
+# Run unit tests
+bun test ||
+    (
+        echo 'Tests Failed. Fix the failing tests before committing.'
+        false
+    )
+
+# Make sure it actually builds
+bun build ||
+    (
+        echo 'Build Failed. Fix the build errors above before committing.'
+        false
+    )
+
+echo '✅✅✅✅ All checks passed successfully. Committing. ✅✅✅✅'
