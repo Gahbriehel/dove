@@ -12,6 +12,10 @@ import { EventsModule } from './events/events.module';
 import { PeopleModule } from './people/people.module';
 import { TeamsModule } from './teams/teams.module';
 import { GamesModule } from './games/games.module';
+import { EmailModule } from './email/email.module';
+import { RegistrationsModule } from './registrations/registrations.module';
+import { AttendanceModule } from './attendance/attendance.module';
+import { ScoresModule } from './scores/scores.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -36,6 +40,10 @@ import { AppService } from './app.service';
     PeopleModule,
     TeamsModule,
     GamesModule,
+    EmailModule,
+    RegistrationsModule,
+    AttendanceModule,
+    ScoresModule,
   ],
   controllers: [AppController],
   providers: [
