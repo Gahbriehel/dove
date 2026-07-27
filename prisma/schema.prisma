@@ -7,6 +7,33 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum MembershipStatus {
+  VISITOR
+  MEMBER
+  WORKER
+  LEADER
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  COMPLETED
+  CANCELLED
+}
+
+enum RegistrationStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CANCELLED
+}
+
 model Church {
   id        String   @id @default(uuid())
   name      String   @db.VarChar(255)
@@ -14,14 +41,16 @@ model Church {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  users User[]
+  users  User[]
+  people Person[]
+  events Event[]
 
   @@map("churches")
 }
 
 model User {
   id           String   @id @default(uuid())
-  churchId     String?  @map("church_id")
+  churchId     String   @map("church_id")
   email        String   @unique @db.VarChar(255)
   passwordHash String   @map("password_hash") @db.VarChar(255)
   firstName    String   @map("first_name") @db.VarChar(100)
@@ -30,7 +59,7 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  church        Church?        @relation(fields: [churchId], references: [id], onDelete: SetNull)
+  church        Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
   userRoles     UserRole[]
   refreshTokens RefreshToken[]
 
@@ -78,4 +107,136 @@ model RefreshToken {
 
   @@index([userId])
   @@map("refresh_tokens")
+}
+
+model Person {
+  id               String           @id @default(uuid())
+  churchId         String           @map("church_id")
+  firstName        String           @map("first_name") @db.VarChar(100)
+  lastName         String           @map("last_name") @db.VarChar(100)
+  email            String?          @db.VarChar(255)
+  phone            String?          @db.VarChar(50)
+  gender           Gender?
+  membershipStatus MembershipStatus @default(VISITOR) @map("membership_status")
+  dateOfBirth      DateTime?        @map("date_of_birth") @db.Date
+  address          String?          @db.Text
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  church        Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  registrations Registration[]
+
+  @@index([churchId])
+  @@index([email])
+  @@index([phone])
+  @@map("people")
+}
+
+model Event {
+  id          String      @id @default(uuid())
+  churchId    String      @map("church_id")
+  title       String      @db.VarChar(255)
+  description String?     @db.Text
+  location    String?     @db.VarChar(255)
+  startDate   DateTime    @map("start_date")
+  endDate     DateTime    @map("end_date")
+  status      EventStatus @default(DRAFT)
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  church        Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  registrations Registration[]
+  teams         Team[]
+  games         Game[]
+
+  @@index([churchId])
+  @@index([status])
+  @@index([startDate])
+  @@map("events")
+}
+
+model Team {
+  id        String   @id @default(uuid())
+  eventId   String   @map("event_id")
+  name      String   @db.VarChar(100)
+  color     String?  @db.VarChar(50)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  event         Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  registrations Registration[]
+  scores        Score[]
+
+  @@index([eventId])
+  @@map("teams")
+}
+
+model Registration {
+  id                 String             @id @default(uuid())
+  eventId            String             @map("event_id")
+  personId           String             @map("person_id")
+  teamId             String?            @map("team_id")
+  registrationNumber String             @unique @map("registration_number") @db.VarChar(50)
+  token              String             @unique @db.VarChar(255)
+  status             RegistrationStatus @default(PENDING)
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+
+  event      Event       @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  person     Person      @relation(fields: [personId], references: [id], onDelete: Cascade)
+  team       Team?       @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  attendance Attendance?
+
+  @@unique([eventId, personId])
+  @@index([eventId])
+  @@index([personId])
+  @@index([teamId])
+  @@index([status])
+  @@map("registrations")
+}
+
+model Attendance {
+  id             String   @id @default(uuid())
+  registrationId String   @unique @map("registration_id")
+  checkedInAt    DateTime @default(now()) @map("checked_in_at")
+  checkedInBy    String?  @map("checked_in_by")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  registration Registration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+
+  @@map("attendance")
+}
+
+model Game {
+  id          String   @id @default(uuid())
+  eventId     String   @map("event_id")
+  name        String   @db.VarChar(150)
+  description String?  @db.Text
+  maxScore    Int?     @map("max_score")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  event  Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  scores Score[]
+
+  @@index([eventId])
+  @@map("games")
+}
+
+model Score {
+  id        String   @id @default(uuid())
+  gameId    String   @map("game_id")
+  teamId    String   @map("team_id")
+  points    Int      @default(0)
+  notes     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([gameId])
+  @@index([teamId])
+  @@map("scores")
 }

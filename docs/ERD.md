@@ -22,13 +22,24 @@ A person may begin as a visitor, become a member, later become a worker, and eve
 
 ## Churches
 
-Represents a church using the platform.
+Represents the owner of the platform.
 
-Relationships
+Phase 1
 
-- One Church has many Users
-- One Church has many People
-- One Church has many Events
+- Exactly one Church exists.
+- The Church is seeded during application setup.
+- No CRUD endpoints exist.
+- Every User, Person and Event belongs to this Church.
+
+Future
+
+Phase 4 introduces:
+
+- Church CRUD
+- Multiple Churches
+- Tenant isolation
+
+The database schema is already designed for this transition.
 
 ---
 

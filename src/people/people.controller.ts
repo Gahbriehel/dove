@@ -1,0 +1,83 @@
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { CreatePersonDto } from './dto/create-person.dto';
+import { QueryPersonDto } from './dto/query-person.dto';
+import { UpdatePersonDto } from './dto/update-person.dto';
+import { PeopleService } from './people.service';
+
+@ApiTags('People')
+@ApiBearerAuth()
+@Controller('people')
+export class PeopleController {
+  constructor(private readonly peopleService: PeopleService) {}
+
+  @Post()
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a new person record' })
+  @ApiResponse({ status: 201, description: 'Person created successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid input data' })
+  @ApiResponse({ status: 404, description: 'Church not found' })
+  async create(
+    @Body() createPersonDto: CreatePersonDto,
+    @CurrentUser('churchId') userChurchId: string,
+  ) {
+    return this.peopleService.create(createPersonDto, userChurchId);
+  }
+
+  @Get()
+  @ApiOperation({ summary: 'List people with pagination and filters' })
+  @ApiResponse({
+    status: 200,
+    description: 'List of people retrieved successfully',
+  })
+  async findAll(
+    @Query() query: QueryPersonDto,
+    @CurrentUser('churchId') userChurchId: string,
+  ) {
+    return this.peopleService.findAll(query, userChurchId);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a person by ID' })
+  @ApiResponse({ status: 200, description: 'Person retrieved successfully' })
+  @ApiResponse({ status: 404, description: 'Person not found' })
+  async findOne(@Param('id') id: string) {
+    return this.peopleService.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a person record' })
+  @ApiResponse({ status: 200, description: 'Person updated successfully' })
+  @ApiResponse({ status: 404, description: 'Person not found' })
+  async update(
+    @Param('id') id: string,
+    @Body() updatePersonDto: UpdatePersonDto,
+  ) {
+    return this.peopleService.update(id, updatePersonDto);
+  }
+
+  @Delete(':id')
+  @ApiOperation({ summary: 'Delete a person record' })
+  @ApiResponse({ status: 200, description: 'Person deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Person not found' })
+  async remove(@Param('id') id: string) {
+    return this.peopleService.remove(id);
+  }
+}

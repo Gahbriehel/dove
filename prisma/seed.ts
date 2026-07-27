@@ -4,9 +4,27 @@ import * as bcrypt from 'bcryptjs';
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('Seeding initial system roles and super admin user...');
+  console.log('Seeding initial church, system roles, and super admin user...');
 
-  // 1. Seed Roles
+  // 1. Seed Default Church
+  const churchName =
+    process.env.DEFAULT_CHURCH_NAME || 'Amazing Grace Bible Church';
+  const churchSlug = process.env.DEFAULT_CHURCH_SLUG || 'abwog';
+
+  const defaultChurch = await prisma.church.upsert({
+    where: { slug: churchSlug },
+    update: { name: churchName },
+    create: {
+      name: churchName,
+      slug: churchSlug,
+    },
+  });
+
+  console.log(
+    `Default Church ensured: ${defaultChurch.name} (ID: ${defaultChurch.id}, Slug: ${defaultChurch.slug})`,
+  );
+
+  // 2. Seed Roles
   const superAdminRole = await prisma.role.upsert({
     where: { name: 'SUPER_ADMIN' },
     update: {},
@@ -28,7 +46,7 @@ async function main() {
 
   console.log(`Roles ensured: ${superAdminRole.name}, ${adminRole.name}`);
 
-  // 2. Seed Super Admin User
+  // 3. Seed Super Admin User
   const email = process.env.SUPER_ADMIN_EMAIL || 'superadmin@church.org';
   const rawPassword = process.env.SUPER_ADMIN_PASSWORD || 'SuperAdmin123!';
   const passwordHash = await bcrypt.hash(rawPassword, 10);
@@ -45,6 +63,7 @@ async function main() {
         firstName: 'Super',
         lastName: 'Admin',
         isActive: true,
+        churchId: defaultChurch.id,
         userRoles: {
           create: {
             roleId: superAdminRole.id,
@@ -55,6 +74,11 @@ async function main() {
 
     console.log(`Super Admin user created successfully: ${user.email}`);
   } else {
+    // Ensure Super Admin is linked to the seeded church and role
+    await prisma.user.update({
+      where: { id: existingSuperAdmin.id },
+      data: { churchId: defaultChurch.id },
+    });
     // Ensure Super Admin role is attached
     const hasRole = await prisma.userRole.findUnique({
       where: {

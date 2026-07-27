@@ -5,7 +5,7 @@ export interface ActiveUserData {
   sub: string;
   email: string;
   roles: string[];
-  churchId?: string | null;
+  churchId: string;
 }
 
 interface RequestWithUser extends Request {

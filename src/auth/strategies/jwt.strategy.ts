@@ -8,7 +8,7 @@ export interface JwtPayload {
   sub: string;
   email: string;
   roles: string[];
-  churchId?: string | null;
+  churchId: string;
 }
 
 @Injectable()
@@ -27,7 +27,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   validate(payload: JwtPayload): ActiveUserData {
-    if (!payload.sub || !payload.email) {
+    if (!payload.sub || !payload.email || !payload.churchId) {
       throw new UnauthorizedException('Invalid token payload');
     }
 
@@ -35,7 +35,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       sub: payload.sub,
       email: payload.email,
       roles: payload.roles || [],
-      churchId: payload.churchId ?? null,
+      churchId: payload.churchId,
     };
   }
 }

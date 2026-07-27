@@ -17,7 +17,7 @@ interface JwtRefreshPayload {
   sub: string;
   email: string;
   roles: string[];
-  churchId?: string | null;
+  churchId: string;
 }
 
 @Injectable()
@@ -155,7 +155,7 @@ export class AuthService {
     userId: string,
     email: string,
     roles: string[],
-    churchId?: string | null,
+    churchId: string,
   ) {
     const jwtSecret = this.configService.get<string>('jwt.secret');
     const jwtExpiresIn =
