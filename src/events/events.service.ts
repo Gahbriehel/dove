@@ -3,6 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -13,12 +14,15 @@ export class EventsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createEventDto: CreateEventDto, userChurchId?: string) {
-    const { churchId: bodyChurchId, startDate, endDate, ...rest } = createEventDto;
+    const {
+      churchId: bodyChurchId,
+      startDate,
+      endDate,
+      ...rest
+    } = createEventDto;
 
     const churchId =
-      bodyChurchId ||
-      userChurchId ||
-      (await this.prisma.getDefaultChurchId());
+      bodyChurchId || userChurchId || (await this.prisma.getDefaultChurchId());
 
     const church = await this.prisma.church.findUnique({
       where: { id: churchId },
@@ -42,15 +46,19 @@ export class EventsService {
   }
 
   async findAll(query: QueryEventDto, userChurchId?: string) {
-    const { churchId: queryChurchId, status, search, page = 1, limit = 10 } = query;
+    const {
+      churchId: queryChurchId,
+      status,
+      search,
+      page = 1,
+      limit = 10,
+    } = query;
     const skip = (page - 1) * limit;
 
     const targetChurchId =
-      queryChurchId ||
-      userChurchId ||
-      (await this.prisma.getDefaultChurchId());
+      queryChurchId || userChurchId || (await this.prisma.getDefaultChurchId());
 
-    const where: any = {
+    const where: Prisma.EventWhereInput = {
       churchId: targetChurchId,
     };
 
@@ -130,10 +138,10 @@ export class EventsService {
       }
     }
 
-    const data: any = { ...rest };
+    const data: Prisma.EventUpdateInput = { ...rest };
 
     if (churchId) {
-      data.churchId = churchId;
+      data.church = { connect: { id: churchId } };
     }
     if (startDate) {
       data.startDate = new Date(startDate);

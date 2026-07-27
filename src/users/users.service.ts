@@ -40,11 +40,16 @@ export class UsersService {
     churchId?: string;
     roleIds?: string[];
   }) {
-    const { email, passwordHash, firstName, lastName, churchId: inputChurchId, roleIds } =
-      data;
+    const {
+      email,
+      passwordHash,
+      firstName,
+      lastName,
+      churchId: inputChurchId,
+      roleIds,
+    } = data;
 
-    const churchId =
-      inputChurchId || (await this.prisma.getDefaultChurchId());
+    const churchId = inputChurchId || (await this.prisma.getDefaultChurchId());
 
     return this.prisma.user.create({
       data: {

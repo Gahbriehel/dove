@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
@@ -31,7 +32,7 @@ export class TeamsService {
     const { eventId, search, page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.TeamWhereInput = {};
 
     if (eventId) {
       where.eventId = eventId;

@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
@@ -12,9 +13,7 @@ export class PeopleService {
     const { churchId: bodyChurchId, dateOfBirth, ...rest } = createPersonDto;
 
     const churchId =
-      bodyChurchId ||
-      userChurchId ||
-      (await this.prisma.getDefaultChurchId());
+      bodyChurchId || userChurchId || (await this.prisma.getDefaultChurchId());
 
     const church = await this.prisma.church.findUnique({
       where: { id: churchId },
@@ -33,15 +32,19 @@ export class PeopleService {
   }
 
   async findAll(query: QueryPersonDto, userChurchId?: string) {
-    const { churchId: queryChurchId, membershipStatus, search, page = 1, limit = 10 } = query;
+    const {
+      churchId: queryChurchId,
+      membershipStatus,
+      search,
+      page = 1,
+      limit = 10,
+    } = query;
     const skip = (page - 1) * limit;
 
     const targetChurchId =
-      queryChurchId ||
-      userChurchId ||
-      (await this.prisma.getDefaultChurchId());
+      queryChurchId || userChurchId || (await this.prisma.getDefaultChurchId());
 
-    const where: any = {
+    const where: Prisma.PersonWhereInput = {
       churchId: targetChurchId,
     };
 
@@ -128,10 +131,10 @@ export class PeopleService {
       }
     }
 
-    const data: any = { ...rest };
+    const data: Prisma.PersonUpdateInput = { ...rest };
 
     if (churchId) {
-      data.churchId = churchId;
+      data.church = { connect: { id: churchId } };
     }
     if (dateOfBirth !== undefined) {
       data.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;

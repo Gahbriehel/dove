@@ -9,7 +9,7 @@ export class PrismaService
   async onModuleInit() {
     try {
       await this.$connect();
-    } catch (error) {
+    } catch {
       console.warn(
         'Could not connect to database on startup. Make sure MySQL is running.',
       );

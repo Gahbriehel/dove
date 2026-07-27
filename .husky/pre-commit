@@ -29,7 +29,7 @@ bun test ||
     )
 
 # Make sure it actually builds
-bun build ||
+bun run build ||
     (
         echo 'Build Failed. Fix the build errors above before committing.'
         false

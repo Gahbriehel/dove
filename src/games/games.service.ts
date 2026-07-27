@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
@@ -32,7 +33,7 @@ export class GamesService {
     const { eventId, search, page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.GameWhereInput = {};
 
     if (eventId) {
       where.eventId = eventId;
