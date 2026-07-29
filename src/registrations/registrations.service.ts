@@ -3,6 +3,7 @@ import {
   ConflictException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -17,6 +18,8 @@ import { RegisterDto } from './dto/register.dto';
 
 @Injectable()
 export class RegistrationsService {
+  private readonly logger = new Logger(RegistrationsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     @Inject(EMAIL_SERVICE)
@@ -42,140 +45,152 @@ export class RegistrationsService {
 
     const churchId = event.churchId;
 
-    // 1. Find existing Person by email or phone
-    let person = null;
-    if (email) {
-      person = await this.prisma.person.findFirst({
-        where: { churchId, email },
-      });
-    }
+    // Wrap person lookup/creation, registration duplication check, team assignment, and registration creation in a transaction
+    const { registration, assignedTeam, qrCodeDataUrl, recipientPerson } =
+      await this.prisma.$transaction(async (tx) => {
+        // 1. Find or create Person
+        let person = null;
+        if (email) {
+          person = await tx.person.findFirst({
+            where: { churchId, email },
+          });
+        }
 
-    if (!person && phone) {
-      person = await this.prisma.person.findFirst({
-        where: { churchId, phone },
-      });
-    }
+        if (!person && phone) {
+          person = await tx.person.findFirst({
+            where: { churchId, phone },
+          });
+        }
 
-    // If none exists, create Person
-    if (!person) {
-      person = await this.prisma.person.create({
-        data: {
-          churchId,
-          firstName,
-          lastName,
-          email: email || null,
-          phone: phone || null,
-          gender: gender || null,
-          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-          address: address || null,
-          membershipStatus: MembershipStatus.VISITOR,
-        },
-      });
-    }
+        if (!person) {
+          person = await tx.person.create({
+            data: {
+              churchId,
+              firstName,
+              lastName,
+              email: email || null,
+              phone: phone || null,
+              gender: gender || null,
+              dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+              address: address || null,
+              membershipStatus: MembershipStatus.VISITOR,
+            },
+          });
+        }
 
-    // 2. Check if already registered for this event
-    const existingRegistration = await this.prisma.registration.findUnique({
-      where: {
-        eventId_personId: {
-          eventId,
-          personId: person.id,
-        },
-      },
-      include: {
-        event: { select: { id: true, title: true, startDate: true } },
-        person: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            phone: true,
+        // 2. Check if already registered for this event
+        const existingRegistration = await tx.registration.findUnique({
+          where: {
+            eventId_personId: {
+              eventId,
+              personId: person.id,
+            },
           },
-        },
-        team: { select: { id: true, name: true, color: true } },
-        attendance: true,
-      },
-    });
-
-    if (existingRegistration) {
-      const qrCodeDataUrl = await QRCode.toDataURL(existingRegistration.token);
-      throw new ConflictException({
-        message: 'Attendee has already registered for this event',
-        registration: {
-          ...existingRegistration,
-          qrCodeDataUrl,
-        },
-      });
-    }
-
-    // 3. Balanced Team Assignment
-    const teams = await this.prisma.team.findMany({
-      where: { eventId },
-      include: {
-        _count: {
-          select: { registrations: true },
-        },
-      },
-    });
-
-    if (!teams || teams.length === 0) {
-      throw new UnprocessableEntityException(
-        'Teams have not been configured for this event. Event setup is required before accepting registrations.',
-      );
-    }
-
-    // Sort by fewest registrations, then by creation date / id for determinism
-    teams.sort((a, b) => {
-      if (a._count.registrations !== b._count.registrations) {
-        return a._count.registrations - b._count.registrations;
-      }
-      return a.createdAt.getTime() - b.createdAt.getTime();
-    });
-
-    const assignedTeam = teams[0];
-
-    // 4. Generate registration number and secure token
-    const timestampStr = Date.now().toString(36).toUpperCase();
-    const randomHex = crypto.randomBytes(2).toString('hex').toUpperCase();
-    const registrationNumber = `REG-${timestampStr}-${randomHex}`;
-    const token = crypto.randomUUID();
-
-    // 5. Generate QR Code
-    const qrCodeDataUrl = await QRCode.toDataURL(token);
-
-    // 6. Save registration
-    const registration = await this.prisma.registration.create({
-      data: {
-        eventId,
-        personId: person.id,
-        teamId: assignedTeam.id,
-        registrationNumber,
-        token,
-        status: RegistrationStatus.CONFIRMED,
-      },
-      include: {
-        event: {
-          select: { id: true, title: true, startDate: true, location: true },
-        },
-        person: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-            phone: true,
+          include: {
+            event: { select: { id: true, title: true, startDate: true } },
+            person: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true,
+              },
+            },
+            team: { select: { id: true, name: true, color: true } },
+            attendance: true,
           },
-        },
-        team: { select: { id: true, name: true, color: true } },
-      },
-    });
+        });
 
-    // 7. Asynchronously trigger confirmation email (if email exists)
-    if (person.email) {
+        if (existingRegistration) {
+          const qrCodeUrl = await QRCode.toDataURL(existingRegistration.token);
+          throw new ConflictException({
+            message: 'Attendee has already registered for this event',
+            registration: {
+              ...existingRegistration,
+              qrCodeDataUrl: qrCodeUrl,
+            },
+          });
+        }
+
+        // 3. Balanced Team Assignment
+        const teams = await tx.team.findMany({
+          where: { eventId },
+          include: {
+            _count: {
+              select: { registrations: true },
+            },
+          },
+        });
+
+        if (!teams || teams.length === 0) {
+          throw new UnprocessableEntityException(
+            'Teams have not been configured for this event. Event setup is required before accepting registrations.',
+          );
+        }
+
+        teams.sort((a, b) => {
+          if (a._count.registrations !== b._count.registrations) {
+            return a._count.registrations - b._count.registrations;
+          }
+          return a.createdAt.getTime() - b.createdAt.getTime();
+        });
+
+        const selectedTeam = teams[0];
+
+        // 4. Generate tokens & registration number
+        const timestampStr = Date.now().toString(36).toUpperCase();
+        const randomHex = crypto.randomBytes(2).toString('hex').toUpperCase();
+        const registrationNumber = `REG-${timestampStr}-${randomHex}`;
+        const token = crypto.randomUUID();
+        const qrCodeUrl = await QRCode.toDataURL(token);
+
+        // 5. Save registration
+        const createdReg = await tx.registration.create({
+          data: {
+            eventId,
+            personId: person.id,
+            teamId: selectedTeam.id,
+            registrationNumber,
+            token,
+            status: RegistrationStatus.CONFIRMED,
+          },
+          include: {
+            event: {
+              select: {
+                id: true,
+                title: true,
+                startDate: true,
+                location: true,
+              },
+            },
+            person: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+                phone: true,
+              },
+            },
+            team: { select: { id: true, name: true, color: true } },
+          },
+        });
+
+        return {
+          registration: createdReg,
+          assignedTeam: selectedTeam,
+          qrCodeDataUrl: qrCodeUrl,
+          recipientPerson: person,
+        };
+      });
+
+    // Asynchronously send confirmation email if recipient email is available
+    if (recipientPerson.email) {
       this.emailService
         .sendRegistrationConfirmation({
-          recipientEmail: person.email,
-          recipientName: `${person.firstName} ${person.lastName}`,
+          recipientEmail: recipientPerson.email,
+          recipientName: `${recipientPerson.firstName} ${recipientPerson.lastName}`,
           eventTitle: event.title,
           registrationNumber: registration.registrationNumber,
           qrToken: registration.token,
@@ -184,8 +199,10 @@ export class RegistrationsService {
           teamColor: assignedTeam.color || undefined,
         })
         .catch((err) => {
-          // Log email dispatch error without blocking response
-          console.error('Failed to send confirmation email:', err);
+          this.logger.error(
+            `Failed to send registration confirmation email to ${recipientPerson.email}`,
+            err instanceof Error ? err.stack : String(err),
+          );
         });
     }
 
@@ -198,11 +215,17 @@ export class RegistrationsService {
     };
   }
 
-  async findAll(query: QueryRegistrationDto) {
+  async findAll(query: QueryRegistrationDto, userChurchId?: string) {
     const { eventId, teamId, status, search, page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.RegistrationWhereInput = {};
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const where: Prisma.RegistrationWhereInput = {
+      event: {
+        churchId,
+      },
+    };
 
     if (eventId) {
       where.eventId = eventId;
@@ -261,9 +284,16 @@ export class RegistrationsService {
     };
   }
 
-  async findOne(id: string) {
-    const registration = await this.prisma.registration.findUnique({
-      where: { id },
+  async findOne(id: string, userChurchId?: string) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const registration = await this.prisma.registration.findFirst({
+      where: {
+        id,
+        event: {
+          churchId,
+        },
+      },
       include: {
         event: true,
         person: true,

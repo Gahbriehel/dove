@@ -90,9 +90,12 @@ export class PeopleService {
     };
   }
 
-  async findOne(id: string) {
-    const person = await this.prisma.person.findUnique({
-      where: { id },
+  async findOne(id: string, userChurchId?: string) {
+    const targetChurchId =
+      userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const person = await this.prisma.person.findFirst({
+      where: { id, churchId: targetChurchId },
       include: {
         church: {
           select: { id: true, name: true, slug: true },
@@ -117,25 +120,17 @@ export class PeopleService {
     return person;
   }
 
-  async update(id: string, updatePersonDto: UpdatePersonDto) {
-    await this.findOne(id);
+  async update(
+    id: string,
+    updatePersonDto: UpdatePersonDto,
+    userChurchId?: string,
+  ) {
+    await this.findOne(id, userChurchId);
 
-    const { churchId, dateOfBirth, ...rest } = updatePersonDto;
-
-    if (churchId) {
-      const church = await this.prisma.church.findUnique({
-        where: { id: churchId },
-      });
-      if (!church) {
-        throw new NotFoundException(`Church with ID "${churchId}" not found`);
-      }
-    }
+    const { dateOfBirth, ...rest } = updatePersonDto;
 
     const data: Prisma.PersonUpdateInput = { ...rest };
 
-    if (churchId) {
-      data.church = { connect: { id: churchId } };
-    }
     if (dateOfBirth !== undefined) {
       data.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
     }
@@ -146,8 +141,8 @@ export class PeopleService {
     });
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, userChurchId?: string) {
+    await this.findOne(id, userChurchId);
 
     await this.prisma.person.delete({
       where: { id },

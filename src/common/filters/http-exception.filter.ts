@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
 
 @Catch()
@@ -17,33 +18,56 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const status =
-      exception instanceof HttpException
-        ? exception.getStatus()
-        : HttpStatus.INTERNAL_SERVER_ERROR;
-
-    const exceptionResponse =
-      exception instanceof HttpException ? exception.getResponse() : null;
-
+    let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: string | string[] = 'Internal server error';
+    let extraData: Record<string, unknown> = {};
 
-    if (typeof exceptionResponse === 'string') {
-      message = exceptionResponse;
-    } else if (
-      typeof exceptionResponse === 'object' &&
-      exceptionResponse !== null
-    ) {
-      const respObj = exceptionResponse as Record<string, unknown>;
-      if (typeof respObj.message === 'string') {
-        message = respObj.message;
-      } else if (Array.isArray(respObj.message)) {
-        message = respObj.message as string[];
+    if (exception instanceof HttpException) {
+      status = exception.getStatus();
+      const exceptionResponse = exception.getResponse();
+
+      if (typeof exceptionResponse === 'string') {
+        message = exceptionResponse;
+      } else if (
+        typeof exceptionResponse === 'object' &&
+        exceptionResponse !== null
+      ) {
+        const respObj = exceptionResponse as Record<string, unknown>;
+        if (typeof respObj.message === 'string') {
+          message = respObj.message;
+        } else if (Array.isArray(respObj.message)) {
+          message = respObj.message as string[];
+        }
+
+        // Preserve any additional custom properties (e.g. registration, qrCodeDataUrl)
+        const rest = { ...respObj };
+        delete rest.message;
+        delete rest.statusCode;
+        delete rest.error;
+        extraData = rest;
+      }
+    } else if (exception instanceof Prisma.PrismaClientKnownRequestError) {
+      if (exception.code === 'P2002') {
+        status = HttpStatus.CONFLICT;
+        const targetMeta = exception.meta?.target;
+        const target = Array.isArray(targetMeta)
+          ? targetMeta.join(', ')
+          : typeof targetMeta === 'string'
+            ? targetMeta
+            : 'field';
+        message = `A record with this ${target} already exists.`;
+      } else if (exception.code === 'P2025') {
+        status = HttpStatus.NOT_FOUND;
+        message = 'Requested record was not found.';
+      } else {
+        status = HttpStatus.BAD_REQUEST;
+        message = `Database operation failed: ${exception.message}`;
       }
     } else if (exception instanceof Error) {
       message = exception.message;
     }
 
-    if (status === 500) {
+    if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(
         `Unhandled Exception on ${request.method} ${request.url}`,
         exception instanceof Error ? exception.stack : String(exception),
@@ -57,7 +81,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       error:
         exception instanceof HttpException
           ? exception.name
-          : 'InternalServerError',
+          : exception instanceof Prisma.PrismaClientKnownRequestError
+            ? `PrismaError_${exception.code}`
+            : 'InternalServerError',
+      ...extraData,
       timestamp: new Date().toISOString(),
       path: request.url,
     });

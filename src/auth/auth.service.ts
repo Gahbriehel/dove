@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { RefreshToken } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { LoginDto } from './dto/login.dto';
@@ -18,6 +18,26 @@ interface JwtRefreshPayload {
   email: string;
   roles: string[];
   churchId: string;
+  jti?: string;
+}
+
+function parseDurationToMs(duration: string): number {
+  const match = /^(\d+)([smhd])$/.exec(duration);
+  if (!match) return 7 * 24 * 60 * 60 * 1000;
+  const value = parseInt(match[1], 10);
+  const unit = match[2];
+  switch (unit) {
+    case 's':
+      return value * 1000;
+    case 'm':
+      return value * 60 * 1000;
+    case 'h':
+      return value * 60 * 60 * 1000;
+    case 'd':
+      return value * 24 * 60 * 60 * 1000;
+    default:
+      return 7 * 24 * 60 * 60 * 1000;
+  }
 }
 
 @Injectable()
@@ -89,25 +109,44 @@ export class AuthService {
       throw new UnauthorizedException('User no longer exists or is inactive');
     }
 
-    const activeTokens = await this.prisma.refreshToken.findMany({
-      where: {
-        userId,
-        isRevoked: false,
-        expiresAt: {
-          gt: new Date(),
+    // Fast O(1) lookup using jti token ID
+    let matchingToken = null;
+    if (payload.jti) {
+      const tokenRecord = await this.prisma.refreshToken.findUnique({
+        where: { id: payload.jti },
+      });
+      if (
+        tokenRecord &&
+        !tokenRecord.isRevoked &&
+        tokenRecord.expiresAt > new Date() &&
+        tokenRecord.userId === userId
+      ) {
+        const isMatch = await bcrypt.compare(
+          refreshTokenDto.refreshToken,
+          tokenRecord.tokenHash,
+        );
+        if (isMatch) {
+          matchingToken = tokenRecord;
+        }
+      }
+    } else {
+      // Fallback for legacy tokens without jti
+      const activeTokens = await this.prisma.refreshToken.findMany({
+        where: {
+          userId,
+          isRevoked: false,
+          expiresAt: { gt: new Date() },
         },
-      },
-    });
-
-    let matchingToken: RefreshToken | null = null;
-    for (const tokenRecord of activeTokens) {
-      const isMatch = await bcrypt.compare(
-        refreshTokenDto.refreshToken,
-        tokenRecord.tokenHash,
-      );
-      if (isMatch) {
-        matchingToken = tokenRecord;
-        break;
+      });
+      for (const tokenRecord of activeTokens) {
+        const isMatch = await bcrypt.compare(
+          refreshTokenDto.refreshToken,
+          tokenRecord.tokenHash,
+        );
+        if (isMatch) {
+          matchingToken = tokenRecord;
+          break;
+        }
       }
     }
 
@@ -164,24 +203,35 @@ export class AuthService {
     const refreshExpiresIn =
       this.configService.get<string>('jwt.refreshExpiresIn') || '7d';
 
-    const payload = { sub: userId, email, roles, churchId };
+    const tokenId = crypto.randomUUID();
+    const accessPayload = { sub: userId, email, roles, churchId };
+    const refreshPayload = {
+      sub: userId,
+      email,
+      roles,
+      churchId,
+      jti: tokenId,
+    };
 
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwtService.signAsync(payload, {
+      this.jwtService.signAsync(accessPayload, {
         secret: jwtSecret,
         expiresIn: jwtExpiresIn as unknown as number,
       }),
-      this.jwtService.signAsync(payload, {
+      this.jwtService.signAsync(refreshPayload, {
         secret: refreshSecret,
         expiresIn: refreshExpiresIn as unknown as number,
       }),
     ]);
 
     const tokenHash = await bcrypt.hash(refreshToken, 10);
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(
+      Date.now() + parseDurationToMs(refreshExpiresIn),
+    );
 
     await this.prisma.refreshToken.create({
       data: {
+        id: tokenId,
         userId,
         tokenHash,
         expiresAt,

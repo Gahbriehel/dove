@@ -16,13 +16,12 @@ import { EmailModule } from './email/email.module';
 import { RegistrationsModule } from './registrations/registrations.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { ScoresModule } from './scores/scores.module';
+import { HealthModule } from './health/health.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
-import { AppController } from './app.controller';
-import { AppService } from './app.service';
 
 @Module({
   imports: [
@@ -44,10 +43,10 @@ import { AppService } from './app.service';
     RegistrationsModule,
     AttendanceModule,
     ScoresModule,
+    HealthModule,
   ],
-  controllers: [AppController],
+  controllers: [],
   providers: [
-    AppService,
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

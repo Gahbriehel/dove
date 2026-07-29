@@ -11,8 +11,13 @@ import { CheckInDto } from './dto/check-in.dto';
 export class AttendanceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async checkIn(checkInDto: CheckInDto, adminUserId?: string) {
+  async checkIn(
+    checkInDto: CheckInDto,
+    adminUserId?: string,
+    userChurchId?: string,
+  ) {
     const { token } = checkInDto;
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
     // 1. Find registration by token
     const registration = await this.prisma.registration.findUnique({
@@ -32,6 +37,7 @@ export class AttendanceService {
           select: {
             id: true,
             title: true,
+            churchId: true,
             startDate: true,
             endDate: true,
           },
@@ -47,7 +53,7 @@ export class AttendanceService {
       },
     });
 
-    if (!registration) {
+    if (!registration || registration.event.churchId !== churchId) {
       throw new NotFoundException('Invalid registration token');
     }
 

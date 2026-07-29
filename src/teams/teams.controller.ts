@@ -16,6 +16,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { QueryTeamDto } from './dto/query-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
@@ -28,6 +29,7 @@ export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 
   @Post()
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new team for an event' })
   @ApiResponse({ status: 201, description: 'Team created successfully' })
@@ -58,6 +60,7 @@ export class TeamsController {
   }
 
   @Patch(':id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Update a team record' })
   @ApiResponse({ status: 200, description: 'Team updated successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })
@@ -66,6 +69,7 @@ export class TeamsController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Delete a team record' })
   @ApiResponse({ status: 200, description: 'Team deleted successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })

@@ -14,7 +14,9 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { QueryRegistrationDto } from './dto/query-registration.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegistrationsService } from './registrations.service';
@@ -55,17 +57,22 @@ export class RegistrationsController {
   }
 
   @Get('registrations')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all registrations (Admin only)' })
   @ApiResponse({
     status: 200,
     description: 'List of registrations retrieved successfully',
   })
-  async findAll(@Query() query: QueryRegistrationDto) {
-    return this.registrationsService.findAll(query);
+  async findAll(
+    @Query() query: QueryRegistrationDto,
+    @CurrentUser('churchId') churchId: string,
+  ) {
+    return this.registrationsService.findAll(query, churchId);
   }
 
   @Get('registrations/:id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a single registration by ID (Admin only)' })
   @ApiResponse({
@@ -73,7 +80,10 @@ export class RegistrationsController {
     description: 'Registration details retrieved successfully',
   })
   @ApiResponse({ status: 404, description: 'Registration not found' })
-  async findOne(@Param('id') id: string) {
-    return this.registrationsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser('churchId') churchId: string,
+  ) {
+    return this.registrationsService.findOne(id, churchId);
   }
 }

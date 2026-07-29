@@ -102,9 +102,12 @@ export class EventsService {
     };
   }
 
-  async findOne(id: string) {
-    const event = await this.prisma.event.findUnique({
-      where: { id },
+  async findOne(id: string, userChurchId?: string) {
+    const targetChurchId =
+      userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const event = await this.prisma.event.findFirst({
+      where: { id, churchId: targetChurchId },
       include: {
         church: {
           select: { id: true, name: true, slug: true },
@@ -124,25 +127,24 @@ export class EventsService {
     return event;
   }
 
-  async update(id: string, updateEventDto: UpdateEventDto) {
-    await this.findOne(id);
+  async update(
+    id: string,
+    updateEventDto: UpdateEventDto,
+    userChurchId?: string,
+  ) {
+    const existing = await this.findOne(id, userChurchId);
 
-    const { churchId, startDate, endDate, ...rest } = updateEventDto;
+    const { startDate, endDate, ...rest } = updateEventDto;
 
-    if (churchId) {
-      const church = await this.prisma.church.findUnique({
-        where: { id: churchId },
-      });
-      if (!church) {
-        throw new NotFoundException(`Church with ID "${churchId}" not found`);
-      }
+    const effectiveStart = startDate ? new Date(startDate) : existing.startDate;
+    const effectiveEnd = endDate ? new Date(endDate) : existing.endDate;
+
+    if (effectiveStart >= effectiveEnd) {
+      throw new BadRequestException('startDate must be earlier than endDate');
     }
 
     const data: Prisma.EventUpdateInput = { ...rest };
 
-    if (churchId) {
-      data.church = { connect: { id: churchId } };
-    }
     if (startDate) {
       data.startDate = new Date(startDate);
     }
@@ -156,8 +158,8 @@ export class EventsService {
     });
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, userChurchId?: string) {
+    await this.findOne(id, userChurchId);
 
     await this.prisma.event.delete({
       where: { id },

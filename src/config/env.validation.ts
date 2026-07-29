@@ -60,5 +60,16 @@ export function validate(config: Record<string, unknown>) {
   if (errors.length > 0) {
     throw new Error(errors.toString());
   }
+
+  if (
+    validatedConfig.NODE_ENV === Environment.Production &&
+    (!config.SUPER_ADMIN_PASSWORD ||
+      validatedConfig.SUPER_ADMIN_PASSWORD === 'SuperAdmin123!')
+  ) {
+    throw new Error(
+      'SUPER_ADMIN_PASSWORD must be explicitly configured with a non-default password in production environment.',
+    );
+  }
+
   return validatedConfig;
 }

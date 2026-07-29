@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CreateEventDto } from './dto/create-event.dto';
 import { QueryEventDto } from './dto/query-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -29,6 +30,7 @@ export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 
   @Post()
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new event' })
@@ -61,11 +63,15 @@ export class EventsController {
   @ApiOperation({ summary: 'Get a single event by ID' })
   @ApiResponse({ status: 200, description: 'Event retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Event not found' })
-  async findOne(@Param('id') id: string) {
-    return this.eventsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.eventsService.findOne(id, userChurchId);
   }
 
   @Patch(':id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update an existing event' })
   @ApiResponse({ status: 200, description: 'Event updated successfully' })
@@ -73,16 +79,21 @@ export class EventsController {
   async update(
     @Param('id') id: string,
     @Body() updateEventDto: UpdateEventDto,
+    @CurrentUser('churchId') userChurchId?: string,
   ) {
-    return this.eventsService.update(id, updateEventDto);
+    return this.eventsService.update(id, updateEventDto, userChurchId);
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete an event' })
   @ApiResponse({ status: 200, description: 'Event deleted successfully' })
   @ApiResponse({ status: 404, description: 'Event not found' })
-  async remove(@Param('id') id: string) {
-    return this.eventsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.eventsService.remove(id, userChurchId);
   }
 }

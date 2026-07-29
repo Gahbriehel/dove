@@ -14,6 +14,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { RecordScoreDto } from './dto/record-score.dto';
 import { ScoresService } from './scores.service';
 
@@ -23,6 +24,7 @@ export class ScoresController {
   constructor(private readonly scoresService: ScoresService) {}
 
   @Post('scores')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Record score for a team in a game (Admin only)' })

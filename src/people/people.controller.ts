@@ -58,8 +58,11 @@ export class PeopleController {
   @ApiOperation({ summary: 'Get a person by ID' })
   @ApiResponse({ status: 200, description: 'Person retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Person not found' })
-  async findOne(@Param('id') id: string) {
-    return this.peopleService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser('churchId') userChurchId: string,
+  ) {
+    return this.peopleService.findOne(id, userChurchId);
   }
 
   @Patch(':id')
@@ -69,15 +72,19 @@ export class PeopleController {
   async update(
     @Param('id') id: string,
     @Body() updatePersonDto: UpdatePersonDto,
+    @CurrentUser('churchId') userChurchId: string,
   ) {
-    return this.peopleService.update(id, updatePersonDto);
+    return this.peopleService.update(id, updatePersonDto, userChurchId);
   }
 
   @Delete(':id')
   @ApiOperation({ summary: 'Delete a person record' })
   @ApiResponse({ status: 200, description: 'Person deleted successfully' })
   @ApiResponse({ status: 404, description: 'Person not found' })
-  async remove(@Param('id') id: string) {
-    return this.peopleService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('churchId') userChurchId: string,
+  ) {
+    return this.peopleService.remove(id, userChurchId);
   }
 }

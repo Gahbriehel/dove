@@ -1,4 +1,10 @@
-import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaClient } from '@prisma/client';
 
 @Injectable()
@@ -6,24 +12,25 @@ export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  async onModuleInit() {
-    try {
-      await this.$connect();
-    } catch {
-      console.warn(
-        'Could not connect to database on startup. Make sure MySQL is running.',
-      );
-    }
+  private readonly logger = new Logger(PrismaService.name);
+  private cachedDefaultChurchId: string | null = null;
+
+  constructor(private readonly configService: ConfigService) {
+    super();
   }
 
-  private cachedDefaultChurchId: string | null = null;
+  async onModuleInit() {
+    await this.$connect();
+    this.logger.log('Database connection established');
+  }
 
   async getDefaultChurchId(): Promise<string> {
     if (this.cachedDefaultChurchId) {
       return this.cachedDefaultChurchId;
     }
 
-    const defaultSlug = process.env.DEFAULT_CHURCH_SLUG || 'abwog';
+    const defaultSlug =
+      this.configService.get<string>('DEFAULT_CHURCH_SLUG') || 'abwog';
     let church = await this.church.findUnique({
       where: { slug: defaultSlug },
     });

@@ -16,6 +16,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Roles } from '../common/decorators/roles.decorator';
 import { CreateGameDto } from './dto/create-game.dto';
 import { QueryGameDto } from './dto/query-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
@@ -28,6 +29,7 @@ export class GamesController {
   constructor(private readonly gamesService: GamesService) {}
 
   @Post()
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new game for an event' })
   @ApiResponse({ status: 201, description: 'Game created successfully' })
@@ -58,6 +60,7 @@ export class GamesController {
   }
 
   @Patch(':id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Update a game record' })
   @ApiResponse({ status: 200, description: 'Game updated successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })
@@ -66,6 +69,7 @@ export class GamesController {
   }
 
   @Delete(':id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiOperation({ summary: 'Delete a game record' })
   @ApiResponse({ status: 200, description: 'Game deleted successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })

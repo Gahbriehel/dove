@@ -6,6 +6,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { AttendanceService } from './attendance.service';
 import { CheckInDto } from './dto/check-in.dto';
 
@@ -15,6 +16,7 @@ export class AttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
   @Post('checkin')
+  @Roles('ADMIN', 'SUPER_ADMIN')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Check in an attendee via QR token (Admin only)' })
@@ -33,7 +35,12 @@ export class AttendanceController {
   async checkIn(
     @Body() checkInDto: CheckInDto,
     @CurrentUser('sub') adminUserId?: string,
+    @CurrentUser('churchId') userChurchId?: string,
   ) {
-    return this.attendanceService.checkIn(checkInDto, adminUserId);
+    return this.attendanceService.checkIn(
+      checkInDto,
+      adminUserId,
+      userChurchId,
+    );
   }
 }
