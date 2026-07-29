@@ -10,6 +10,7 @@ import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 
@@ -188,6 +189,32 @@ export class AuthService {
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     };
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const isCurrentValid = await bcrypt.compare(
+      dto.currentPassword,
+      user.passwordHash,
+    );
+    if (!isCurrentValid) {
+      throw new UnauthorizedException('Current password is incorrect');
+    }
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new UnauthorizedException(
+        'New password must be different from current password',
+      );
+    }
+
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.usersService.updatePassword(userId, newPasswordHash);
+
+    return { message: 'Password changed successfully. Please log in again.' };
   }
 
   private async generateTokens(

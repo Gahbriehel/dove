@@ -18,6 +18,7 @@ import {
   type ActiveUserData,
 } from '../common/decorators/current-user.decorator';
 import { AuthService } from './auth.service';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 
@@ -59,5 +60,20 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Unauthorized' })
   async getProfile(@CurrentUser() user: ActiveUserData) {
     return this.authService.getProfile(user.sub);
+  }
+
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Change password for the current authenticated user',
+  })
+  @ApiResponse({ status: 200, description: 'Password changed successfully' })
+  @ApiResponse({ status: 401, description: 'Current password is incorrect' })
+  async changePassword(
+    @Body() dto: ChangePasswordDto,
+    @CurrentUser() user: ActiveUserData,
+  ) {
+    return this.authService.changePassword(user.sub, dto);
   }
 }
