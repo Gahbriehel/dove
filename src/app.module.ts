@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { LoggerModule } from 'nestjs-pino';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import configuration from './config/configuration';
 import { validate } from './config/env.validation';
@@ -29,6 +30,17 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
       isGlobal: true,
       load: [configuration],
       validate,
+    }),
+    LoggerModule.forRoot({
+      pinoHttp: {
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? {
+                target: require.resolve('pino-pretty'),
+                options: { singleLine: true },
+              }
+            : undefined,
+      },
     }),
     PrismaModule,
     CommonModule,
