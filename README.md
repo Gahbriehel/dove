@@ -1,4 +1,4 @@
-# 🕊️ Dove
+# Dove
 
 > **Church Events Platform** — A backend API for managing church events, attendee registration, teams, games, and leaderboards.
 
