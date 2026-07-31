@@ -18,6 +18,7 @@ import { RegistrationsModule } from './registrations/registrations.module';
 import { AttendanceModule } from './attendance/attendance.module';
 import { ScoresModule } from './scores/scores.module';
 import { HealthModule } from './health/health.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -56,6 +57,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     AttendanceModule,
     ScoresModule,
     HealthModule,
+    DashboardModule,
   ],
   controllers: [],
   providers: [
