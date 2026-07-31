@@ -36,7 +36,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
         transport:
           process.env.NODE_ENV !== 'production'
             ? {
-                target: require.resolve('pino-pretty'),
+                target: 'pino-pretty',
                 options: { singleLine: true },
               }
             : undefined,
