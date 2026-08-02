@@ -26,7 +26,7 @@ import { UsersService } from './users.service';
 
 @ApiTags('Users')
 @ApiBearerAuth()
-@Roles('SUPER_ADMIN')
+@Roles('ADMIN', 'SUPER_ADMIN')
 @Controller('users')
 export class UsersController {
   constructor(

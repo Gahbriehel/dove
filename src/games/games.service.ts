@@ -5,6 +5,23 @@ import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { QueryGameDto } from './dto/query-game.dto';
 
+const GAME_INCLUDE = {
+  event: {
+    select: { id: true, title: true },
+  },
+  scores: {
+    include: {
+      team: {
+        select: { id: true, name: true, color: true },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+  },
+  _count: {
+    select: { scores: true },
+  },
+} satisfies Prisma.GameInclude;
+
 @Injectable()
 export class GamesService {
   constructor(private readonly prisma: PrismaService) {}
@@ -26,6 +43,7 @@ export class GamesService {
         description,
         maxScore,
       },
+      include: GAME_INCLUDE,
     });
   }
 
@@ -52,14 +70,7 @@ export class GamesService {
         skip,
         take: limit,
         orderBy: { name: 'asc' },
-        include: {
-          event: {
-            select: { id: true, title: true },
-          },
-          _count: {
-            select: { scores: true },
-          },
-        },
+        include: GAME_INCLUDE,
       }),
       this.prisma.game.count({ where }),
     ]);
@@ -78,18 +89,7 @@ export class GamesService {
   async findOne(id: string) {
     const game = await this.prisma.game.findUnique({
       where: { id },
-      include: {
-        event: {
-          select: { id: true, title: true },
-        },
-        scores: {
-          include: {
-            team: {
-              select: { id: true, name: true, color: true },
-            },
-          },
-        },
-      },
+      include: GAME_INCLUDE,
     });
 
     if (!game) {
@@ -119,6 +119,7 @@ export class GamesService {
         ...rest,
         ...(eventId && { eventId }),
       },
+      include: GAME_INCLUDE,
     });
   }
 

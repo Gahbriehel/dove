@@ -13,6 +13,7 @@ const USER_SELECT = {
   email: true,
   firstName: true,
   lastName: true,
+  phone: true,
   isActive: true,
   churchId: true,
   createdAt: true,
@@ -116,14 +117,96 @@ export class UsersService {
   }
 
   async update(id: string, dto: UpdateUserDto, userChurchId?: string) {
-    await this.findOne(id, userChurchId);
+    const existingUser = await this.findOne(id, userChurchId);
+
+    if (dto.email && dto.email !== existingUser.email) {
+      const emailTaken = await this.prisma.user.findUnique({
+        where: { email: dto.email },
+      });
+      if (emailTaken) {
+        throw new ConflictException(
+          `A user with email "${dto.email}" already exists`,
+        );
+      }
+    }
+
+    // Handle Role updates
+    if (dto.role) {
+      const roleName = dto.role.toUpperCase();
+      const role = await this.prisma.role.upsert({
+        where: { name: roleName },
+        update: {},
+        create: {
+          name: roleName,
+          description: `${roleName} user role`,
+        },
+      });
+
+      await this.prisma.userRole.deleteMany({
+        where: { userId: id },
+      });
+
+      await this.prisma.userRole.create({
+        data: {
+          userId: id,
+          roleId: role.id,
+        },
+      });
+    }
+
+    // Sync corresponding Person record if membershipStatus or role changed
+    const targetEmail = dto.email ?? existingUser.email;
+    const targetFirstName = dto.firstName ?? existingUser.firstName;
+    const targetLastName = dto.lastName ?? existingUser.lastName;
+    const targetPhone = dto.phone ?? existingUser.phone;
+
+    let targetMembershipStatus = dto.membershipStatus;
+    if (!targetMembershipStatus && dto.role) {
+      const upperRole = dto.role.toUpperCase();
+      if (upperRole === 'MEMBER') targetMembershipStatus = 'MEMBER';
+      else if (upperRole === 'WORKER') targetMembershipStatus = 'WORKER';
+      else if (upperRole === 'LEADER') targetMembershipStatus = 'LEADER';
+      else if (upperRole === 'ADMIN' || upperRole === 'SUPER_ADMIN')
+        targetMembershipStatus = 'WORKER';
+    }
+
+    if (targetMembershipStatus && targetEmail) {
+      const person = await this.prisma.person.findFirst({
+        where: { email: targetEmail, churchId: existingUser.churchId },
+      });
+
+      if (person) {
+        await this.prisma.person.update({
+          where: { id: person.id },
+          data: {
+            membershipStatus: targetMembershipStatus,
+            firstName: targetFirstName,
+            lastName: targetLastName,
+            phone: targetPhone ?? person.phone,
+          },
+        });
+      } else {
+        await this.prisma.person.create({
+          data: {
+            churchId: existingUser.churchId,
+            email: targetEmail,
+            firstName: targetFirstName,
+            lastName: targetLastName,
+            phone: targetPhone,
+            membershipStatus: targetMembershipStatus,
+          },
+        });
+      }
+    }
 
     return this.prisma.user.update({
       where: { id },
       data: {
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        isActive: dto.isActive,
+        ...(dto.firstName !== undefined && { firstName: dto.firstName }),
+        ...(dto.lastName !== undefined && { lastName: dto.lastName }),
+        ...(dto.email !== undefined && { email: dto.email }),
+        ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
       select: USER_SELECT,
     });
