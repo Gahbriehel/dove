@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -85,5 +86,21 @@ export class RegistrationsController {
     @CurrentUser('churchId') churchId: string,
   ) {
     return this.registrationsService.findOne(id, churchId);
+  }
+
+  @Delete('registrations/:id')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Delete a registration by ID (Admin only)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Registration deleted successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Registration not found' })
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('churchId') churchId: string,
+  ) {
+    return this.registrationsService.remove(id, churchId);
   }
 }

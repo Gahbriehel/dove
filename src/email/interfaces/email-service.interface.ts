@@ -4,6 +4,10 @@ export interface RegistrationConfirmationEmailData {
   recipientEmail: string;
   recipientName: string;
   eventTitle: string;
+  eventDate?: string;
+  eventLocation?: string;
+  contactEmail?: string;
+  contactPhone?: string;
   registrationNumber: string;
   qrToken: string;
   qrCodeDataUrl: string;

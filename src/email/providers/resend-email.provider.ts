@@ -61,6 +61,10 @@ export class ResendEmailProvider implements IEmailService {
         React.createElement(RegistrationConfirmationEmail, {
           recipientName: data.recipientName,
           eventTitle: data.eventTitle,
+          eventDate: data.eventDate,
+          eventLocation: data.eventLocation,
+          contactEmail: data.contactEmail,
+          contactPhone: data.contactPhone,
           registrationNumber: data.registrationNumber,
           qrCodeDataUrl: qrCodeDataUrlProp,
           teamName: data.teamName,

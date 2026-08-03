@@ -16,8 +16,12 @@ export class ConsoleEmailProvider implements IEmailService {
         `[CONFIRMATION EMAIL DISPATCHED]\n` +
         `To: ${data.recipientName} <${data.recipientEmail}>\n` +
         `Event: ${data.eventTitle}\n` +
+        `Date: ${data.eventDate || 'N/A'}\n` +
+        `Location: ${data.eventLocation || 'N/A'}\n` +
         `Registration #: ${data.registrationNumber}\n` +
         `Team: ${data.teamName || 'N/A'}${data.teamColor ? ` (${data.teamColor})` : ''}\n` +
+        `Contact Email: ${data.contactEmail || 'N/A'}\n` +
+        `Contact Phone: ${data.contactPhone || 'N/A'}\n` +
         `QR Token: ${data.qrToken}\n` +
         `QR Data URL (first 40 chars): ${data.qrCodeDataUrl.substring(0, 40)}...\n` +
         `------------------------------------------------------------`,

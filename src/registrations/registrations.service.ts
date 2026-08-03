@@ -48,19 +48,33 @@ export class RegistrationsService {
     // Wrap person lookup/creation, registration duplication check, team assignment, and registration creation in a transaction
     const { registration, assignedTeam, qrCodeDataUrl, recipientPerson } =
       await this.prisma.$transaction(async (tx) => {
-        // 1. Find or create Person
-        let person = null;
+        // 1. Find or create Person without updating existing person details
+        let personByEmail = null;
+        let personByPhone = null;
+
         if (email) {
-          person = await tx.person.findFirst({
+          personByEmail = await tx.person.findFirst({
             where: { churchId, email },
           });
         }
 
-        if (!person && phone) {
-          person = await tx.person.findFirst({
+        if (phone) {
+          personByPhone = await tx.person.findFirst({
             where: { churchId, phone },
           });
         }
+
+        if (
+          personByEmail &&
+          personByPhone &&
+          personByEmail.id !== personByPhone.id
+        ) {
+          throw new ConflictException(
+            'The provided email and phone number belong to different registered attendees.',
+          );
+        }
+
+        let person = personByEmail || personByPhone;
 
         if (!person) {
           person = await tx.person.create({
@@ -138,10 +152,11 @@ export class RegistrationsService {
 
         const selectedTeam = teams[0];
 
-        // 4. Generate tokens & registration number
-        const timestampStr = Date.now().toString(36).toUpperCase();
-        const randomHex = crypto.randomBytes(2).toString('hex').toUpperCase();
-        const registrationNumber = `REG-${timestampStr}-${randomHex}`;
+        // 4. Generate tokens & registration number (format: reg[initials][identifier], max 8 chars)
+        const registrationNumber = await this.generateRegistrationNumber(
+          event.title,
+          tx,
+        );
         const token = crypto.randomUUID();
         const qrCodeUrl = await QRCode.toDataURL(token);
 
@@ -187,11 +202,22 @@ export class RegistrationsService {
 
     // Asynchronously send confirmation email if recipient email is available
     if (recipientPerson.email) {
+      const formattedDate = event.startDate
+        ? new Date(event.startDate).toLocaleString('en-US', {
+            dateStyle: 'full',
+            timeStyle: 'short',
+          })
+        : undefined;
+
       this.emailService
         .sendRegistrationConfirmation({
           recipientEmail: recipientPerson.email,
           recipientName: `${recipientPerson.firstName} ${recipientPerson.lastName}`,
           eventTitle: event.title,
+          eventDate: formattedDate,
+          eventLocation: event.location || undefined,
+          contactEmail: event.church.email || undefined,
+          contactPhone: event.church.phone || undefined,
           registrationNumber: registration.registrationNumber,
           qrToken: registration.token,
           qrCodeDataUrl,
@@ -312,5 +338,73 @@ export class RegistrationsService {
       ...registration,
       qrCodeDataUrl,
     };
+  }
+
+  async remove(id: string, userChurchId?: string) {
+    const registration = await this.findOne(id, userChurchId);
+
+    await this.prisma.registration.delete({
+      where: { id: registration.id },
+    });
+
+    return { message: `Registration with ID "${id}" deleted successfully` };
+  }
+
+  private async generateRegistrationNumber(
+    eventTitle: string,
+    tx: Prisma.TransactionClient,
+  ): Promise<string> {
+    const prefix = 'reg';
+    const words = eventTitle
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 0);
+    let initials = '';
+
+    if (words.length >= 2) {
+      initials = (words[0][0] + words[1][0])
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .toUpperCase();
+    } else if (words.length === 1) {
+      initials = words[0]
+        .substring(0, 2)
+        .replace(/[^a-zA-Z0-9]/g, '')
+        .toUpperCase();
+    }
+
+    if (!initials) {
+      initials = 'EV';
+    }
+
+    initials = initials.substring(0, 2);
+
+    const identifierLength = Math.max(1, 8 - prefix.length - initials.length);
+
+    let attempts = 0;
+    while (attempts < 10) {
+      const randomStr = crypto
+        .randomBytes(3)
+        .toString('hex')
+        .toUpperCase()
+        .substring(0, identifierLength);
+
+      const candidate = `${prefix}${initials}${randomStr}`;
+
+      const existing = await tx.registration.findUnique({
+        where: { registrationNumber: candidate },
+      });
+
+      if (!existing) {
+        return candidate;
+      }
+      attempts++;
+    }
+
+    const fallbackHex = crypto
+      .randomBytes(2)
+      .toString('hex')
+      .toUpperCase()
+      .substring(0, identifierLength);
+    return `${prefix}${initials}${fallbackHex}`;
   }
 }
