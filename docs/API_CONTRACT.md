@@ -133,8 +133,43 @@ GET /games/:id
 
 POST /scores
 
+Record score for a team in a game. Returns 409 Conflict if a score already exists for the team in that game (use PATCH to update).
+
+PATCH /scores/:id
+
+Update points, notes, or game/team assignment of an existing score record.
+
+DELETE /scores/game/:gameId
+
+Clear all score records associated with a specific game.
+
 GET /leaderboard/:eventId
 
-Returns
+Returns teams sorted by total points.
 
-Teams sorted by total points.
+---
+
+# People
+
+GET /people
+
+Admin only. Lists all people records enriched with registration history, attendance history, `eventsRegisteredCount`, and `eventsAttendedCount`. (Phase 2 will add department memberships).
+
+GET /people/:id
+
+Admin only. Retrieves single person details with complete event registration and attendance history.
+
+---
+
+# Users
+
+POST /users
+
+Super Admin only. Creates a new admin user and automatically dispatches a welcome email containing their initial login credentials (plain-text temporary password) with instructions to change password upon initial login.
+
+---
+
+# Phase 2 Upcoming API Extensions (Preview)
+
+- GET /departments & GET /departments/:id
+- People & Profile endpoints (GET /people, GET /auth/profile) will include assigned `departments` array for administrative & member UI views.

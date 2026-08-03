@@ -4,9 +4,11 @@ import { render } from '@react-email/render';
 import * as React from 'react';
 import { Resend } from 'resend';
 import {
+  AdminWelcomeEmailData,
   IEmailService,
   RegistrationConfirmationEmailData,
 } from '../interfaces/email-service.interface';
+import { AdminWelcomeEmail } from '../templates/admin-welcome.template';
 import { RegistrationConfirmationEmail } from '../templates/registration-confirmation.template';
 
 @Injectable()
@@ -93,6 +95,44 @@ export class ResendEmailProvider implements IEmailService {
     } catch (error) {
       this.logger.error(
         `Failed to send email to ${data.recipientEmail}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      throw error;
+    }
+  }
+
+  async sendAdminWelcome(data: AdminWelcomeEmailData): Promise<void> {
+    try {
+      const html = await render(
+        React.createElement(AdminWelcomeEmail, {
+          recipientName: data.recipientName,
+          recipientEmail: data.recipientEmail,
+          temporaryPassword: data.temporaryPassword,
+          loginUrl: data.loginUrl,
+          churchName: data.churchName,
+        }),
+      );
+
+      const response = await this.resend.emails.send({
+        from: this.fromAddress,
+        to: data.recipientEmail,
+        subject: `Welcome to ${data.churchName || 'Dove Platform'} - Your Admin Account Credentials`,
+        html,
+      });
+
+      if (response.error) {
+        this.logger.error(
+          `Resend API error sending welcome email to ${data.recipientEmail}: ${response.error.message}`,
+        );
+        throw new Error(response.error.message);
+      }
+
+      this.logger.log(
+        `Successfully sent admin welcome email to ${data.recipientEmail} (Email ID: ${response.data?.id})`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send admin welcome email to ${data.recipientEmail}`,
         error instanceof Error ? error.stack : String(error),
       );
       throw error;

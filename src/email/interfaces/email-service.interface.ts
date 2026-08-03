@@ -15,8 +15,17 @@ export interface RegistrationConfirmationEmailData {
   teamColor?: string;
 }
 
+export interface AdminWelcomeEmailData {
+  recipientEmail: string;
+  recipientName: string;
+  temporaryPassword: string;
+  loginUrl?: string;
+  churchName?: string;
+}
+
 export interface IEmailService {
   sendRegistrationConfirmation(
     data: RegistrationConfirmationEmailData,
   ): Promise<void>;
+  sendAdminWelcome(data: AdminWelcomeEmailData): Promise<void>;
 }

@@ -29,8 +29,8 @@ Church Relationship Platform
 
 Modules
 
-- Member Profiles
-- Department Management
+- Member Profiles (Enriched with Department memberships & history)
+- Department Management (People assigned to Departments; returned in GET /people and GET /auth/profile for frontend display)
 - Follow-up
 - Visitor Tracking
 - Email Campaigns

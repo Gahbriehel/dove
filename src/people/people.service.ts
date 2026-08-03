@@ -71,6 +71,26 @@ export class PeopleService {
           church: {
             select: { id: true, name: true, slug: true },
           },
+          registrations: {
+            include: {
+              event: {
+                select: {
+                  id: true,
+                  title: true,
+                  startDate: true,
+                  status: true,
+                  location: true,
+                },
+              },
+              team: {
+                select: { id: true, name: true, color: true },
+              },
+              attendance: {
+                select: { id: true, checkedInAt: true, checkedInBy: true },
+              },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
           _count: {
             select: { registrations: true },
           },
@@ -79,8 +99,21 @@ export class PeopleService {
       this.prisma.person.count({ where }),
     ]);
 
+    const formattedItems = items.map((person) => {
+      const eventsRegisteredCount = person.registrations.length;
+      const eventsAttendedCount = person.registrations.filter(
+        (reg) => reg.attendance !== null,
+      ).length;
+
+      return {
+        ...person,
+        eventsRegisteredCount,
+        eventsAttendedCount,
+      };
+    });
+
     return {
-      items,
+      items: formattedItems,
       meta: {
         total,
         page,
@@ -103,12 +136,22 @@ export class PeopleService {
         registrations: {
           include: {
             event: {
-              select: { id: true, title: true, startDate: true, status: true },
+              select: {
+                id: true,
+                title: true,
+                startDate: true,
+                status: true,
+                location: true,
+              },
             },
             team: {
               select: { id: true, name: true, color: true },
             },
+            attendance: {
+              select: { id: true, checkedInAt: true, checkedInBy: true },
+            },
           },
+          orderBy: { createdAt: 'desc' },
         },
       },
     });
@@ -117,7 +160,16 @@ export class PeopleService {
       throw new NotFoundException(`Person with ID "${id}" not found`);
     }
 
-    return person;
+    const eventsRegisteredCount = person.registrations.length;
+    const eventsAttendedCount = person.registrations.filter(
+      (reg) => reg.attendance !== null,
+    ).length;
+
+    return {
+      ...person,
+      eventsRegisteredCount,
+      eventsAttendedCount,
+    };
   }
 
   async update(

@@ -96,9 +96,9 @@ Relationships
 - Belongs to Church
 - Has many Registrations
 
-Future Relationships
+Future Relationships (Phase 2+)
 
-- Departments
+- Departments & Department Memberships (People belong to one or more Departments; returned in GET /people and profile endpoints)
 - Giving
 - Attendance
 - Small Groups

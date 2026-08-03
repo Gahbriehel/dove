@@ -4,6 +4,8 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Inject,
+  Logger,
   Param,
   Patch,
   Post,
@@ -18,6 +20,8 @@ import {
 import * as bcrypt from 'bcryptjs';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
+import type { IEmailService } from '../email/interfaces/email-service.interface';
 import { RolesService } from '../roles/roles.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
@@ -29,9 +33,12 @@ import { UsersService } from './users.service';
 @Roles('ADMIN', 'SUPER_ADMIN')
 @Controller('users')
 export class UsersController {
+  private readonly logger = new Logger(UsersController.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly rolesService: RolesService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: IEmailService,
   ) {}
 
   @Post()
@@ -56,6 +63,19 @@ export class UsersController {
       churchId: userChurchId,
       roleIds: role ? [role.id] : [],
     });
+
+    // Send welcome email with initial plain-text temporary password
+    this.emailService
+      .sendAdminWelcome({
+        recipientEmail: dto.email,
+        recipientName: `${dto.firstName} ${dto.lastName}`.trim(),
+        temporaryPassword: dto.password,
+      })
+      .catch((error) => {
+        this.logger.error(
+          `Failed to dispatch admin welcome email to ${dto.email}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
 
     return { message: 'User created successfully', user };
   }

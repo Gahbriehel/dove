@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
+  AdminWelcomeEmailData,
   IEmailService,
   RegistrationConfirmationEmailData,
 } from '../interfaces/email-service.interface';
@@ -24,6 +25,20 @@ export class ConsoleEmailProvider implements IEmailService {
         `Contact Phone: ${data.contactPhone || 'N/A'}\n` +
         `QR Token: ${data.qrToken}\n` +
         `QR Data URL (first 40 chars): ${data.qrCodeDataUrl.substring(0, 40)}...\n` +
+        `------------------------------------------------------------`,
+    );
+    return Promise.resolve();
+  }
+
+  sendAdminWelcome(data: AdminWelcomeEmailData): Promise<void> {
+    this.logger.log(
+      `------------------------------------------------------------\n` +
+        `[ADMIN WELCOME EMAIL DISPATCHED]\n` +
+        `To: ${data.recipientName} <${data.recipientEmail}>\n` +
+        `Church: ${data.churchName || 'Dove Platform'}\n` +
+        `Temporary Password: ${data.temporaryPassword}\n` +
+        `Login URL: ${data.loginUrl || 'N/A'}\n` +
+        `WARNING: Password is temporary and must be changed on initial login.\n` +
         `------------------------------------------------------------`,
     );
     return Promise.resolve();
