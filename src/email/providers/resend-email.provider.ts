@@ -26,12 +26,43 @@ export class ResendEmailProvider implements IEmailService {
     data: RegistrationConfirmationEmailData,
   ): Promise<void> {
     try {
+      let attachments: any[] | undefined = undefined;
+      let qrCodeDataUrlProp = data.qrCodeDataUrl;
+
+      if (data.qrCodeDataUrl && data.qrCodeDataUrl.startsWith('data:')) {
+        try {
+          const parts = data.qrCodeDataUrl.split(',');
+          const base64Part = parts[1];
+          const header = parts[0];
+
+          if (base64Part) {
+            const buffer = Buffer.from(base64Part, 'base64');
+            const mimeMatch = header.match(/data:(.*?);/);
+            const contentType = mimeMatch ? mimeMatch[1] : 'image/png';
+
+            attachments = [
+              {
+                filename: 'qrcode.png',
+                content: buffer,
+                contentType,
+                contentId: 'qrcode',
+              },
+            ];
+            qrCodeDataUrlProp = 'cid:qrcode';
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Failed to parse QR code data URL for inline attachment, falling back: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+
       const html = await render(
         React.createElement(RegistrationConfirmationEmail, {
           recipientName: data.recipientName,
           eventTitle: data.eventTitle,
           registrationNumber: data.registrationNumber,
-          qrCodeDataUrl: data.qrCodeDataUrl,
+          qrCodeDataUrl: qrCodeDataUrlProp,
           teamName: data.teamName,
           teamColor: data.teamColor,
         }),
@@ -42,6 +73,7 @@ export class ResendEmailProvider implements IEmailService {
         to: data.recipientEmail,
         subject: `Registration Confirmation: ${data.eventTitle}`,
         html,
+        attachments,
       });
 
       if (response.error) {
