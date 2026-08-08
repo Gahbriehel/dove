@@ -13,6 +13,8 @@ export interface RegistrationConfirmationEmailData {
   qrCodeDataUrl: string;
   teamName?: string;
   teamColor?: string;
+  googleCalendarUrl?: string;
+  icsBuffer?: Buffer;
 }
 
 export interface AdminWelcomeEmailData {

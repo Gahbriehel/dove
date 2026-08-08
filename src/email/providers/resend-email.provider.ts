@@ -59,6 +59,17 @@ export class ResendEmailProvider implements IEmailService {
         }
       }
 
+      if (data.icsBuffer) {
+        if (!attachments) {
+          attachments = [];
+        }
+        attachments.push({
+          filename: 'event-invite.ics',
+          content: data.icsBuffer,
+          contentType: 'text/calendar',
+        });
+      }
+
       const html = await render(
         React.createElement(RegistrationConfirmationEmail, {
           recipientName: data.recipientName,
@@ -71,6 +82,7 @@ export class ResendEmailProvider implements IEmailService {
           qrCodeDataUrl: qrCodeDataUrlProp,
           teamName: data.teamName,
           teamColor: data.teamColor,
+          googleCalendarUrl: data.googleCalendarUrl,
         }),
       );
 

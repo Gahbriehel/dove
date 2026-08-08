@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { EventStatus } from '@prisma/client';
 import {
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsNotEmpty,
@@ -29,6 +30,21 @@ export class CreateEventDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @ApiPropertyOptional({
+    description: 'Event flyer image URL (e.g. uploaded via /uploads/image)',
+  })
+  @IsString()
+  @IsOptional()
+  imageUrl?: string;
+
+  @ApiPropertyOptional({
+    description: 'Whether to enable Google Calendar sync for registrants',
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  googleCalendarSync?: boolean;
 
   @ApiPropertyOptional({
     description: 'Event venue or location',

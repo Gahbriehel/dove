@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender } from '@prisma/client';
 import {
+  IsBoolean,
   IsDateString,
   IsEmail,
   IsEnum,
@@ -52,4 +53,13 @@ export class RegisterDto {
   @IsString()
   @IsOptional()
   address?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether the attendee wants the event synced to their Google Calendar',
+    default: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  googleCalendarSync?: boolean;
 }

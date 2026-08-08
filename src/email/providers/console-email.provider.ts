@@ -25,6 +25,7 @@ export class ConsoleEmailProvider implements IEmailService {
         `Contact Phone: ${data.contactPhone || 'N/A'}\n` +
         `QR Token: ${data.qrToken}\n` +
         `QR Data URL (first 40 chars): ${data.qrCodeDataUrl.substring(0, 40)}...\n` +
+        `Google Calendar URL: ${data.googleCalendarUrl || 'N/A'}\n` +
         `------------------------------------------------------------`,
     );
     return Promise.resolve();

@@ -140,16 +140,18 @@ model Person {
 }
 
 model Event {
-  id          String      @id @default(uuid())
-  churchId    String      @map("church_id")
-  title       String      @db.VarChar(255)
-  description String?     @db.Text
-  location    String?     @db.VarChar(255)
-  startDate   DateTime    @map("start_date")
-  endDate     DateTime    @map("end_date")
-  status      EventStatus @default(DRAFT)
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  id                 String      @id @default(uuid())
+  churchId           String      @map("church_id")
+  title              String      @db.VarChar(255)
+  description        String?     @db.Text
+  location           String?     @db.VarChar(255)
+  startDate          DateTime    @map("start_date")
+  endDate            DateTime    @map("end_date")
+  status             EventStatus @default(DRAFT)
+  imageUrl           String?     @map("image_url") @db.VarChar(512)
+  googleCalendarSync Boolean     @default(false) @map("google_calendar_sync")
+  createdAt          DateTime    @default(now()) @map("created_at")
+  updatedAt          DateTime    @updatedAt @map("updated_at")
 
   church        Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
   registrations Registration[]
@@ -186,6 +188,7 @@ model Registration {
   registrationNumber String             @unique @map("registration_number") @db.VarChar(50)
   token              String             @unique @db.VarChar(255)
   status             RegistrationStatus @default(PENDING)
+  googleCalendarSync Boolean            @default(false) @map("google_calendar_sync")
   createdAt          DateTime           @default(now()) @map("created_at")
   updatedAt          DateTime           @updatedAt @map("updated_at")
 

@@ -7,6 +7,7 @@ import {
   Hr,
   Html,
   Img,
+  Link,
   Preview,
   Section,
   Text,
@@ -23,6 +24,7 @@ export interface RegistrationConfirmationEmailProps {
   qrCodeDataUrl: string;
   teamName?: string;
   teamColor?: string;
+  googleCalendarUrl?: string;
 }
 
 export const RegistrationConfirmationEmail = ({
@@ -36,6 +38,7 @@ export const RegistrationConfirmationEmail = ({
   qrCodeDataUrl = '',
   teamName,
   teamColor,
+  googleCalendarUrl,
 }: RegistrationConfirmationEmailProps) => {
   return (
     <Html>
@@ -98,6 +101,18 @@ export const RegistrationConfirmationEmail = ({
               </Section>
             )}
           </Section>
+
+          {/* Add to Google Calendar Section */}
+          {googleCalendarUrl && (
+            <Section style={calendarSection}>
+              <Link href={googleCalendarUrl} style={calendarButton}>
+                📅 Add to Google Calendar
+              </Link>
+              <Text style={calendarNote}>
+                An invite file (event-invite.ics) has also been attached to this email.
+              </Text>
+            </Section>
+          )}
 
           {/* Punctuality Notice */}
           <Section style={noticeBox}>
@@ -345,6 +360,35 @@ const footer = {
   textAlign: 'center' as const,
   lineHeight: '1.5',
   margin: '0',
+};
+
+const calendarSection = {
+  textAlign: 'center' as const,
+  margin: '20px 0',
+  padding: '16px 20px',
+  backgroundColor: '#f8fafc',
+  borderRadius: '8px',
+  border: '1px dashed #cbd5e1',
+};
+
+const calendarButton = {
+  display: 'inline-block',
+  backgroundColor: '#2563eb',
+  color: '#ffffff',
+  padding: '10px 20px',
+  borderRadius: '6px',
+  fontSize: '14px',
+  fontWeight: '700',
+  textDecoration: 'none',
+  textAlign: 'center' as const,
+};
+
+const calendarNote = {
+  fontSize: '12px',
+  color: '#64748b',
+  marginTop: '8px',
+  marginBottom: '0',
+  lineHeight: '1.4',
 };
 
 export default RegistrationConfirmationEmail;
