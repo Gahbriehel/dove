@@ -90,8 +90,8 @@ export class SettingsService {
     }
 
     const name = dto.name ?? dto.churchName;
-    const branchName = dto.branchName ?? dto.campusName;
-    const campusName = dto.campusName ?? dto.branchName ?? branchName;
+    const branchName = dto.branchName ?? dto.branchName;
+    const campusName = dto.campusName ?? dto.campusName;
     const address = dto.address ?? dto.physicalAddress;
     const phone = dto.phone ?? dto.primaryPhone;
     const email = dto.email ?? dto.officialEmail;
