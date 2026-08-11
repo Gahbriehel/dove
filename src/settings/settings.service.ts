@@ -31,7 +31,6 @@ export class SettingsService {
   constructor(private readonly prisma: PrismaService) {}
 
   private formatChurchResponse(church: Church) {
-    const branchOrCampus = church.branchName ?? church.campusName ?? null;
     const physicalOrAddress = church.address ?? null;
     const primaryOrPhone = church.phone ?? null;
     const officialOrEmail = church.email ?? null;
@@ -42,8 +41,8 @@ export class SettingsService {
       name: church.name,
       churchName: church.name,
       slug: church.slug,
-      branchName: branchOrCampus,
-      campusName: branchOrCampus,
+      branchName: church.branchName ?? null,
+      campusName: church.campusName ?? null,
       address: physicalOrAddress,
       physicalAddress: physicalOrAddress,
       phone: primaryOrPhone,
@@ -90,8 +89,8 @@ export class SettingsService {
     }
 
     const name = dto.name ?? dto.churchName;
-    const branchName = dto.branchName ?? dto.branchName;
-    const campusName = dto.campusName ?? dto.campusName;
+    const branchName = dto.branchName;
+    const campusName = dto.campusName;
     const address = dto.address ?? dto.physicalAddress;
     const phone = dto.phone ?? dto.primaryPhone;
     const email = dto.email ?? dto.officialEmail;
