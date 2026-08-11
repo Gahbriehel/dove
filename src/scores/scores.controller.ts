@@ -27,7 +27,7 @@ export class ScoresController {
   constructor(private readonly scoresService: ScoresService) {}
 
   @Post('scores')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Record score for a team in a game (Admin only)' })
@@ -43,7 +43,7 @@ export class ScoresController {
   }
 
   @Patch('scores/:id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update a score record (Admin only)' })
   @ApiResponse({ status: 200, description: 'Score updated successfully' })
@@ -60,7 +60,7 @@ export class ScoresController {
   }
 
   @Delete('scores/game/:gameId')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Clear all scores for a game (Admin only)' })
   @ApiResponse({ status: 200, description: 'All game scores cleared' })

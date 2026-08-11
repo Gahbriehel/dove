@@ -29,7 +29,7 @@ export class GamesController {
   constructor(private readonly gamesService: GamesService) {}
 
   @Post()
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new game for an event' })
   @ApiResponse({ status: 201, description: 'Game created successfully' })
@@ -60,7 +60,7 @@ export class GamesController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiOperation({ summary: 'Update a game record' })
   @ApiResponse({ status: 200, description: 'Game updated successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })
@@ -69,7 +69,7 @@ export class GamesController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiOperation({ summary: 'Delete a game record' })
   @ApiResponse({ status: 200, description: 'Game deleted successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })

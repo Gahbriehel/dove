@@ -27,7 +27,7 @@ export class UploadsController {
   constructor(private readonly uploadsService: UploadsService) {}
 
   @Post('image')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
   @UseInterceptors(FileInterceptor('file'))

@@ -30,7 +30,7 @@ export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 
   @Post()
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new event' })
@@ -71,7 +71,7 @@ export class EventsController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update an existing event' })
   @ApiResponse({ status: 200, description: 'Event updated successfully' })
@@ -85,7 +85,7 @@ export class EventsController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete an event' })
   @ApiResponse({ status: 200, description: 'Event deleted successfully' })

@@ -58,7 +58,7 @@ export class RegistrationsController {
   }
 
   @Get('registrations')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'REGISTRATION_DESK')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List all registrations (Admin only)' })
   @ApiResponse({
@@ -73,7 +73,7 @@ export class RegistrationsController {
   }
 
   @Get('registrations/:id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'REGISTRATION_DESK')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get a single registration by ID (Admin only)' })
   @ApiResponse({
@@ -89,7 +89,7 @@ export class RegistrationsController {
   }
 
   @Delete('registrations/:id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a registration by ID (Admin only)' })
   @ApiResponse({

@@ -29,7 +29,7 @@ export class TeamsController {
   constructor(private readonly teamsService: TeamsService) {}
 
   @Post()
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Create a new team for an event' })
   @ApiResponse({ status: 201, description: 'Team created successfully' })
@@ -60,7 +60,7 @@ export class TeamsController {
   }
 
   @Patch(':id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiOperation({ summary: 'Update a team record' })
   @ApiResponse({ status: 200, description: 'Team updated successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })
@@ -69,7 +69,7 @@ export class TeamsController {
   }
 
   @Delete(':id')
-  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiOperation({ summary: 'Delete a team record' })
   @ApiResponse({ status: 200, description: 'Team deleted successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })

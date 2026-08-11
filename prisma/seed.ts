@@ -44,7 +44,29 @@ async function main() {
     },
   });
 
-  console.log(`Roles ensured: ${superAdminRole.name}, ${adminRole.name}`);
+  const coordinatorRole = await prisma.role.upsert({
+    where: { name: 'COORDINATOR' },
+    update: {},
+    create: {
+      name: 'COORDINATOR',
+      description:
+        'Event Coordinator with event, team, game, score, and attendance management permissions',
+    },
+  });
+
+  const registrationDeskRole = await prisma.role.upsert({
+    where: { name: 'REGISTRATION_DESK' },
+    update: {},
+    create: {
+      name: 'REGISTRATION_DESK',
+      description:
+        'Registration Desk Staff with attendee check-in and registration view permissions',
+    },
+  });
+
+  console.log(
+    `Roles ensured: ${superAdminRole.name}, ${adminRole.name}, ${coordinatorRole.name}, ${registrationDeskRole.name}`,
+  );
 
   // 3. Seed Super Admin User
   const email = process.env.SUPER_ADMIN_EMAIL || 'superadmin@church.org';
