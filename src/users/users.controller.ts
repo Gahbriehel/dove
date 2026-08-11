@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -18,7 +19,10 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import * as bcrypt from 'bcryptjs';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type ActiveUserData,
+} from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
 import type { IEmailService } from '../email/interfaces/email-service.interface';
@@ -114,5 +118,23 @@ export class UsersController {
   ) {
     const user = await this.usersService.update(id, dto, userChurchId);
     return { message: 'User updated successfully', user };
+  }
+
+  @Delete(':id')
+  @ApiOperation({
+    summary: 'Delete a user (Super Admin and Admin only)',
+  })
+  @ApiResponse({ status: 200, description: 'User deleted successfully' })
+  @ApiResponse({ status: 400, description: 'Cannot delete own account' })
+  @ApiResponse({
+    status: 403,
+    description: 'Admins cannot delete Super Admin users',
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser() currentUser: ActiveUserData,
+  ) {
+    return this.usersService.remove(id, currentUser);
   }
 }

@@ -1,9 +1,12 @@
 import {
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import type { ActiveUserData } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -268,5 +271,29 @@ export class UsersService {
       where: { userId: id, isRevoked: false },
       data: { isRevoked: true },
     });
+  }
+
+  async remove(id: string, currentUser: ActiveUserData) {
+    if (currentUser.sub === id) {
+      throw new BadRequestException('You cannot delete your own account');
+    }
+
+    const targetUser = await this.findOne(id, currentUser.churchId);
+
+    const isTargetSuperAdmin = targetUser.userRoles.some(
+      (ur) => ur.role.name === 'SUPER_ADMIN',
+    );
+
+    const isCurrentSuperAdmin = currentUser.roles?.includes('SUPER_ADMIN');
+
+    if (isTargetSuperAdmin && !isCurrentSuperAdmin) {
+      throw new ForbiddenException('Admins cannot delete Super Admin users');
+    }
+
+    await this.prisma.user.delete({
+      where: { id },
+    });
+
+    return { message: 'User deleted successfully' };
   }
 }
