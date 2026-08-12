@@ -46,6 +46,10 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   SUPER_ADMIN_PASSWORD: string = 'SuperAdmin123!';
+
+  @IsString()
+  @IsOptional()
+  LOGIN_URL: string = 'http://localhost:3000/login';
 }
 
 export function validate(config: Record<string, unknown>) {

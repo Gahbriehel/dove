@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import * as bcrypt from 'bcryptjs';
+import { ConfigService } from '@nestjs/config';
 import {
   CurrentUser,
   type ActiveUserData,
@@ -27,6 +28,7 @@ import {
 import { Roles } from '../common/decorators/roles.decorator';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
 import type { IEmailService } from '../email/interfaces/email-service.interface';
+import { PrismaService } from '../prisma/prisma.service';
 import { RolesService } from '../roles/roles.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { QueryUserDto } from './dto/query-user.dto';
@@ -43,6 +45,8 @@ export class UsersController {
   constructor(
     private readonly usersService: UsersService,
     private readonly rolesService: RolesService,
+    private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
     @Inject(EMAIL_SERVICE) private readonly emailService: IEmailService,
   ) {}
 
@@ -74,12 +78,24 @@ export class UsersController {
       roleIds: [role.id],
     });
 
+    const church = user.churchId
+      ? await this.prisma.church.findUnique({
+          where: { id: user.churchId },
+        })
+      : null;
+
+    const loginUrl =
+      this.configService.get<string>('LOGIN_URL') ||
+      'http://localhost:3000/login';
+
     // Send welcome email with initial plain-text temporary password
     this.emailService
       .sendAdminWelcome({
         recipientEmail: dto.email,
         recipientName: `${dto.firstName} ${dto.lastName}`.trim(),
         temporaryPassword: dto.password,
+        churchName: church?.name,
+        loginUrl,
       })
       .catch((error) => {
         this.logger.error(
