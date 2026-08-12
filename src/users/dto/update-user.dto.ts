@@ -4,6 +4,7 @@ import {
   IsBoolean,
   IsEmail,
   IsEnum,
+  IsIn,
   IsOptional,
   IsString,
 } from 'class-validator';
@@ -40,10 +41,19 @@ export class UpdateUserDto {
   @ApiPropertyOptional({
     example: 'ADMIN',
     description:
-      'System role (e.g. SUPER_ADMIN, ADMIN, WORKER, LEADER, MEMBER)',
+      'System role (e.g. SUPER_ADMIN, ADMIN, COORDINATOR, LEADER, WORKER, MEMBER, REGISTRATION_DESK)',
   })
   @IsOptional()
   @IsString()
+  @IsIn([
+    'SUPER_ADMIN',
+    'ADMIN',
+    'COORDINATOR',
+    'LEADER',
+    'WORKER',
+    'MEMBER',
+    'REGISTRATION_DESK',
+  ])
   role?: string;
 
   @ApiPropertyOptional({

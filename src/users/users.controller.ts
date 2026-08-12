@@ -47,7 +47,7 @@ export class UsersController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: 'Create a new admin user (Super Admin only)' })
+  @ApiOperation({ summary: 'Create a new user (Super Admin only)' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({ status: 409, description: 'Email already in use' })
   async create(

@@ -30,11 +30,20 @@ export class CreateUserDto {
 
   @ApiPropertyOptional({
     example: 'ADMIN',
-    description: 'Role to assign: ADMIN or SUPER_ADMIN',
+    description:
+      'Role to assign: SUPER_ADMIN, ADMIN, COORDINATOR, LEADER, WORKER, MEMBER, or REGISTRATION_DESK',
     default: 'ADMIN',
   })
   @IsOptional()
   @IsString()
-  @IsIn(['ADMIN', 'SUPER_ADMIN'])
+  @IsIn([
+    'SUPER_ADMIN',
+    'ADMIN',
+    'COORDINATOR',
+    'LEADER',
+    'WORKER',
+    'MEMBER',
+    'REGISTRATION_DESK',
+  ])
   role?: string;
 }
