@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -56,6 +57,11 @@ export class UsersController {
   ) {
     const roleName = dto.role ?? 'ADMIN';
     const role = await this.rolesService.findByName(roleName);
+    if (!role) {
+      throw new BadRequestException(
+        `Role "${roleName}" does not exist in the database. Please ensure roles are seeded.`,
+      );
+    }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
@@ -65,7 +71,7 @@ export class UsersController {
       firstName: dto.firstName,
       lastName: dto.lastName,
       churchId: userChurchId,
-      roleIds: role ? [role.id] : [],
+      roleIds: [role.id],
     });
 
     // Send welcome email with initial plain-text temporary password
