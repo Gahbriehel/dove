@@ -21,6 +21,7 @@ const USER_SELECT = {
   churchId: true,
   createdAt: true,
   updatedAt: true,
+  lastActive: true,
   userRoles: {
     include: {
       role: {

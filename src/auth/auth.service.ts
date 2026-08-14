@@ -76,7 +76,14 @@ export class AuthService {
       user.churchId,
     );
 
+    const now = new Date();
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastActive: now },
+    });
+
     const { ...fullUserData } = user;
+    fullUserData.lastActive = now;
 
     return {
       tokens,
@@ -159,6 +166,11 @@ export class AuthService {
       data: { isRevoked: true },
     });
 
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastActive: new Date() },
+    });
+
     const roles = user.userRoles.map((ur) => ur.role.name);
     return this.generateTokens(user.id, user.email, roles, user.churchId);
   }
@@ -186,6 +198,7 @@ export class AuthService {
         : null,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
+      lastActive: user.lastActive,
     };
   }
 
