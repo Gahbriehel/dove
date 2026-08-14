@@ -6,6 +6,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { DashboardService } from './dashboard.service';
 import { DashboardDataDto } from './dto/dashboard-response.dto';
@@ -18,6 +19,7 @@ export class DashboardController {
 
   @Get()
   @Roles('ADMIN', 'SUPER_ADMIN')
+  @ResponseMessage('Dashboard stats retrieved successfully')
   @ApiOperation({
     summary:
       'Get aggregate app statistics, latest registrations, and upcoming events',

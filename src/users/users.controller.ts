@@ -21,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import {
   CurrentUser,
   type ActiveUserData,
@@ -52,6 +53,7 @@ export class UsersController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('User created successfully')
   @ApiOperation({ summary: 'Create a new user (Super Admin only)' })
   @ApiResponse({ status: 201, description: 'User created successfully' })
   @ApiResponse({ status: 409, description: 'Email already in use' })
@@ -107,6 +109,7 @@ export class UsersController {
   }
 
   @Get()
+  @ResponseMessage('List of users retrieved successfully')
   @ApiOperation({ summary: 'List all users (Super Admin only)' })
   @ApiResponse({ status: 200, description: 'List of users' })
   async findAll(
@@ -117,6 +120,7 @@ export class UsersController {
   }
 
   @Get(':id')
+  @ResponseMessage('User details retrieved successfully')
   @ApiOperation({ summary: 'Get a single user by ID (Super Admin only)' })
   @ApiResponse({ status: 200, description: 'User details' })
   @ApiResponse({ status: 404, description: 'User not found' })
@@ -128,6 +132,7 @@ export class UsersController {
   }
 
   @Patch(':id')
+  @ResponseMessage('User updated successfully')
   @ApiOperation({
     summary: 'Update a user name or activation status (Super Admin only)',
   })
@@ -143,6 +148,7 @@ export class UsersController {
   }
 
   @Delete(':id')
+  @ResponseMessage('User deleted successfully')
   @ApiOperation({
     summary: 'Delete a user (Super Admin and Admin only)',
   })

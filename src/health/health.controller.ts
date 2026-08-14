@@ -1,6 +1,7 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 
 @ApiTags('Health')
@@ -10,6 +11,7 @@ export class HealthController {
 
   @Public()
   @Get()
+  @ResponseMessage('Health check passed')
   @ApiOperation({ summary: 'Check health and database connectivity' })
   @ApiResponse({
     status: 200,

@@ -13,6 +13,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import {
   CurrentUser,
   type ActiveUserData,
@@ -30,6 +31,7 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Login successful')
   @ApiOperation({ summary: 'Log in with user credentials' })
   @ApiResponse({ status: 200, description: 'Login successful' })
   @ApiResponse({ status: 401, description: 'Invalid email or password' })
@@ -40,6 +42,7 @@ export class AuthController {
   @Public()
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Token refresh successful')
   @ApiOperation({ summary: 'Refresh JWT access token' })
   @ApiResponse({ status: 200, description: 'Token refresh successful' })
   @ApiResponse({
@@ -52,6 +55,7 @@ export class AuthController {
 
   @Get('profile')
   @ApiBearerAuth()
+  @ResponseMessage('User profile retrieved successfully')
   @ApiOperation({ summary: 'Get profile of current authenticated user' })
   @ApiResponse({
     status: 200,
@@ -65,6 +69,7 @@ export class AuthController {
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth()
+  @ResponseMessage('Password changed successfully')
   @ApiOperation({
     summary: 'Change password for the current authenticated user',
   })

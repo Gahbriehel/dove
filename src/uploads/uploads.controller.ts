@@ -18,6 +18,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UploadsService } from './uploads.service';
 
@@ -30,6 +31,7 @@ export class UploadsController {
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Image uploaded successfully')
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({

@@ -16,6 +16,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { QueryTeamDto } from './dto/query-team.dto';
@@ -31,6 +32,7 @@ export class TeamsController {
   @Post()
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Team created successfully')
   @ApiOperation({ summary: 'Create a new team for an event' })
   @ApiResponse({ status: 201, description: 'Team created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
@@ -40,6 +42,7 @@ export class TeamsController {
   }
 
   @Get()
+  @ResponseMessage('List of teams retrieved successfully')
   @ApiOperation({
     summary: 'List teams with pagination and optional event filter',
   })
@@ -52,6 +55,7 @@ export class TeamsController {
   }
 
   @Get(':id')
+  @ResponseMessage('Team retrieved successfully')
   @ApiOperation({ summary: 'Get team details by ID' })
   @ApiResponse({ status: 200, description: 'Team retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })
@@ -61,6 +65,7 @@ export class TeamsController {
 
   @Patch(':id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
+  @ResponseMessage('Team updated successfully')
   @ApiOperation({ summary: 'Update a team record' })
   @ApiResponse({ status: 200, description: 'Team updated successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })
@@ -70,6 +75,7 @@ export class TeamsController {
 
   @Delete(':id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
+  @ResponseMessage('Team deleted successfully')
   @ApiOperation({ summary: 'Delete a team record' })
   @ApiResponse({ status: 200, description: 'Team deleted successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })

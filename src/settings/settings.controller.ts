@@ -6,6 +6,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { UpdateChurchSettingsDto } from './dto/update-church-settings.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -18,6 +19,7 @@ export class SettingsController {
   constructor(private readonly settingsService: SettingsService) {}
 
   @Get(['', 'church'])
+  @ResponseMessage('Church settings retrieved successfully')
   @ApiOperation({ summary: 'Get church information / settings' })
   @ApiResponse({
     status: 200,
@@ -29,6 +31,7 @@ export class SettingsController {
 
   @Patch(['', 'church'])
   @Roles('ADMIN', 'SUPER_ADMIN')
+  @ResponseMessage('Church settings updated successfully')
   @ApiOperation({ summary: 'Update church information / settings' })
   @ApiResponse({
     status: 200,
@@ -43,6 +46,7 @@ export class SettingsController {
 
   @Put(['', 'church'])
   @Roles('ADMIN', 'SUPER_ADMIN')
+  @ResponseMessage('Church settings updated successfully')
   @ApiOperation({ summary: 'Update church information / settings (PUT)' })
   @ApiResponse({
     status: 200,
@@ -56,6 +60,7 @@ export class SettingsController {
   }
 
   @Get(['profile', 'me'])
+  @ResponseMessage('User profile retrieved successfully')
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({
     status: 200,
@@ -66,6 +71,7 @@ export class SettingsController {
   }
 
   @Patch(['profile', 'me'])
+  @ResponseMessage('User profile updated successfully')
   @ApiOperation({ summary: 'Update current user profile' })
   @ApiResponse({
     status: 200,
@@ -84,6 +90,7 @@ export class SettingsController {
   }
 
   @Put(['profile', 'me'])
+  @ResponseMessage('User profile updated successfully')
   @ApiOperation({ summary: 'Update current user profile (PUT)' })
   @ApiResponse({
     status: 200,

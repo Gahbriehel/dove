@@ -18,6 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CreateEventDto } from './dto/create-event.dto';
 import { QueryEventDto } from './dto/query-event.dto';
@@ -33,6 +34,7 @@ export class EventsController {
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Event created successfully')
   @ApiOperation({ summary: 'Create a new event' })
   @ApiResponse({ status: 201, description: 'Event created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
@@ -46,6 +48,7 @@ export class EventsController {
 
   @Public()
   @Get()
+  @ResponseMessage('List of events retrieved successfully')
   @ApiOperation({ summary: 'List all events with filtering and pagination' })
   @ApiResponse({
     status: 200,
@@ -60,6 +63,7 @@ export class EventsController {
 
   @Public()
   @Get(':id')
+  @ResponseMessage('Event details retrieved successfully')
   @ApiOperation({ summary: 'Get a single event by ID' })
   @ApiResponse({ status: 200, description: 'Event retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Event not found' })
@@ -73,6 +77,7 @@ export class EventsController {
   @Patch(':id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
+  @ResponseMessage('Event updated successfully')
   @ApiOperation({ summary: 'Update an existing event' })
   @ApiResponse({ status: 200, description: 'Event updated successfully' })
   @ApiResponse({ status: 404, description: 'Event not found' })
@@ -87,6 +92,7 @@ export class EventsController {
   @Delete(':id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
+  @ResponseMessage('Event deleted successfully')
   @ApiOperation({ summary: 'Delete an event' })
   @ApiResponse({ status: 200, description: 'Event deleted successfully' })
   @ApiResponse({ status: 404, description: 'Event not found' })

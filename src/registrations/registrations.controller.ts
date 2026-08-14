@@ -17,6 +17,7 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { QueryRegistrationDto } from './dto/query-registration.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -30,6 +31,7 @@ export class RegistrationsController {
   @Public()
   @Post('events/:id/register')
   @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Registration successful')
   @ApiOperation({ summary: 'Register a person for an event (Public)' })
   @ApiResponse({
     status: 201,
@@ -60,6 +62,7 @@ export class RegistrationsController {
   @Get('registrations')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'REGISTRATION_DESK')
   @ApiBearerAuth()
+  @ResponseMessage('List of registrations retrieved successfully')
   @ApiOperation({ summary: 'List all registrations (Admin only)' })
   @ApiResponse({
     status: 200,
@@ -75,6 +78,7 @@ export class RegistrationsController {
   @Get('registrations/:id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'REGISTRATION_DESK')
   @ApiBearerAuth()
+  @ResponseMessage('Registration details retrieved successfully')
   @ApiOperation({ summary: 'Get a single registration by ID (Admin only)' })
   @ApiResponse({
     status: 200,
@@ -91,6 +95,7 @@ export class RegistrationsController {
   @Delete('registrations/:id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
+  @ResponseMessage('Registration deleted successfully')
   @ApiOperation({ summary: 'Delete a registration by ID (Admin only)' })
   @ApiResponse({
     status: 200,

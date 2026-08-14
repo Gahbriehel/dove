@@ -16,6 +16,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { CreateGameDto } from './dto/create-game.dto';
 import { QueryGameDto } from './dto/query-game.dto';
@@ -31,6 +32,7 @@ export class GamesController {
   @Post()
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Game created successfully')
   @ApiOperation({ summary: 'Create a new game for an event' })
   @ApiResponse({ status: 201, description: 'Game created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
@@ -40,6 +42,7 @@ export class GamesController {
   }
 
   @Get()
+  @ResponseMessage('List of games retrieved successfully')
   @ApiOperation({
     summary: 'List games with pagination and optional event filter',
   })
@@ -52,6 +55,7 @@ export class GamesController {
   }
 
   @Get(':id')
+  @ResponseMessage('Game retrieved successfully')
   @ApiOperation({ summary: 'Get game details by ID' })
   @ApiResponse({ status: 200, description: 'Game retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })
@@ -61,6 +65,7 @@ export class GamesController {
 
   @Patch(':id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
+  @ResponseMessage('Game updated successfully')
   @ApiOperation({ summary: 'Update a game record' })
   @ApiResponse({ status: 200, description: 'Game updated successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })
@@ -70,6 +75,7 @@ export class GamesController {
 
   @Delete(':id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
+  @ResponseMessage('Game deleted successfully')
   @ApiOperation({ summary: 'Delete a game record' })
   @ApiResponse({ status: 200, description: 'Game deleted successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })

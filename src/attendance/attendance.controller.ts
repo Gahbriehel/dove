@@ -6,6 +6,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { AttendanceService } from './attendance.service';
 import { CheckInDto } from './dto/check-in.dto';
@@ -19,6 +20,7 @@ export class AttendanceController {
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'REGISTRATION_DESK')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Check-in successful')
   @ApiOperation({ summary: 'Check in an attendee via QR token (Admin only)' })
   @ApiResponse({
     status: 200,

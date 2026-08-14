@@ -17,6 +17,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { QueryPersonDto } from './dto/query-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
@@ -30,6 +31,7 @@ export class PeopleController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Person created successfully')
   @ApiOperation({ summary: 'Create a new person record' })
   @ApiResponse({ status: 201, description: 'Person created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
@@ -42,6 +44,7 @@ export class PeopleController {
   }
 
   @Get()
+  @ResponseMessage('List of people retrieved successfully')
   @ApiOperation({ summary: 'List people with pagination and filters' })
   @ApiResponse({
     status: 200,
@@ -55,6 +58,7 @@ export class PeopleController {
   }
 
   @Get(':id')
+  @ResponseMessage('Person retrieved successfully')
   @ApiOperation({ summary: 'Get a person by ID' })
   @ApiResponse({ status: 200, description: 'Person retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Person not found' })
@@ -66,6 +70,7 @@ export class PeopleController {
   }
 
   @Patch(':id')
+  @ResponseMessage('Person updated successfully')
   @ApiOperation({ summary: 'Update a person record' })
   @ApiResponse({ status: 200, description: 'Person updated successfully' })
   @ApiResponse({ status: 404, description: 'Person not found' })
@@ -78,6 +83,7 @@ export class PeopleController {
   }
 
   @Delete(':id')
+  @ResponseMessage('Person deleted successfully')
   @ApiOperation({ summary: 'Delete a person record' })
   @ApiResponse({ status: 200, description: 'Person deleted successfully' })
   @ApiResponse({ status: 404, description: 'Person not found' })

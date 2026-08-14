@@ -16,6 +16,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { RecordScoreDto } from './dto/record-score.dto';
 import { UpdateScoreDto } from './dto/update-score.dto';
@@ -30,6 +31,7 @@ export class ScoresController {
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
   @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Score recorded successfully')
   @ApiOperation({ summary: 'Record score for a team in a game (Admin only)' })
   @ApiResponse({ status: 201, description: 'Score recorded successfully' })
   @ApiResponse({
@@ -45,6 +47,7 @@ export class ScoresController {
   @Patch('scores/:id')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
+  @ResponseMessage('Score updated successfully')
   @ApiOperation({ summary: 'Update a score record (Admin only)' })
   @ApiResponse({ status: 200, description: 'Score updated successfully' })
   @ApiResponse({
@@ -62,6 +65,7 @@ export class ScoresController {
   @Delete('scores/game/:gameId')
   @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR')
   @ApiBearerAuth()
+  @ResponseMessage('All game scores cleared successfully')
   @ApiOperation({ summary: 'Clear all scores for a game (Admin only)' })
   @ApiResponse({ status: 200, description: 'All game scores cleared' })
   @ApiResponse({ status: 404, description: 'Game not found' })
@@ -71,6 +75,7 @@ export class ScoresController {
 
   @Public()
   @Get('leaderboard/:eventId')
+  @ResponseMessage('Leaderboard retrieved successfully')
   @ApiOperation({ summary: 'Get team leaderboard for an event (Public)' })
   @ApiResponse({
     status: 200,
