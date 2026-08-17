@@ -52,6 +52,16 @@ export class RegistrationsService {
       throw new NotFoundException(`Event with ID "${eventId}" not found`);
     }
 
+    // Adjust for GMT+1 time zone (server is 1 hr behind client)
+    const currentClientTime = new Date();
+    currentClientTime.setHours(currentClientTime.getHours() + 1);
+
+    if (event.endDate && event.endDate < currentClientTime) {
+      throw new BadRequestException(
+        'Registration is closed for this event because it has already ended.',
+      );
+    }
+
     const churchId = event.churchId;
 
     // Wrap person lookup/creation, registration duplication check, team assignment, and registration creation in a transaction
