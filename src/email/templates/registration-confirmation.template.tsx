@@ -108,9 +108,6 @@ export const RegistrationConfirmationEmail = ({
               <Link href={googleCalendarUrl} style={calendarButton}>
                 📅 Add to Google Calendar
               </Link>
-              <Text style={calendarNote}>
-                An invite file (event-invite.ics) has also been attached to this email.
-              </Text>
             </Section>
           )}
 
