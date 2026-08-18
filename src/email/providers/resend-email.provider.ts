@@ -5,10 +5,13 @@ import * as React from 'react';
 import { Resend } from 'resend';
 import {
   AdminWelcomeEmailData,
+  BatchCustomEmailResult,
+  CustomEmailData,
   IEmailService,
   RegistrationConfirmationEmailData,
 } from '../interfaces/email-service.interface';
 import { AdminWelcomeEmail } from '../templates/admin-welcome.template';
+import { CustomBroadcastEmail } from '../templates/custom-broadcast.template';
 import { RegistrationConfirmationEmail } from '../templates/registration-confirmation.template';
 
 @Injectable()
@@ -149,5 +152,220 @@ export class ResendEmailProvider implements IEmailService {
       );
       throw error;
     }
+  }
+
+  async sendCustomBroadcast(data: CustomEmailData): Promise<void> {
+    try {
+      let attachments: any[] | undefined = undefined;
+      let qrCodeDataUrlProp = data.qrCodeDataUrl;
+
+      if (data.qrCodeDataUrl && data.qrCodeDataUrl.startsWith('data:')) {
+        try {
+          const parts = data.qrCodeDataUrl.split(',');
+          const base64Part = parts[1];
+          const header = parts[0];
+
+          if (base64Part) {
+            const buffer = Buffer.from(base64Part, 'base64');
+            const mimeMatch = header.match(/data:(.*?);/);
+            const contentType = mimeMatch ? mimeMatch[1] : 'image/png';
+
+            attachments = [
+              {
+                filename: 'qrcode.png',
+                content: buffer,
+                contentType,
+                contentId: 'qrcode',
+              },
+            ];
+            qrCodeDataUrlProp = 'cid:qrcode';
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Failed to parse QR code data URL for broadcast inline attachment: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+
+      const html = await render(
+        React.createElement(CustomBroadcastEmail, {
+          recipientName: data.recipientName,
+          subject: data.subject,
+          heading: data.heading,
+          message: data.message,
+          ctaLabel: data.ctaLabel,
+          ctaUrl: data.ctaUrl,
+          churchName: data.churchName,
+          contactEmail: data.contactEmail,
+          contactPhone: data.contactPhone,
+          eventTitle: data.eventTitle,
+          eventDate: data.eventDate,
+          eventLocation: data.eventLocation,
+          registrationNumber: data.registrationNumber,
+          qrCodeDataUrl: qrCodeDataUrlProp,
+          teamName: data.teamName,
+          teamColor: data.teamColor,
+        }),
+      );
+
+      const response = await this.resend.emails.send({
+        from: this.fromAddress,
+        to: data.recipientEmail,
+        subject: data.subject,
+        html,
+        attachments,
+      });
+
+      if (response.error) {
+        this.logger.error(
+          `Resend API error sending broadcast email to ${data.recipientEmail}: ${response.error.message}`,
+        );
+        throw new Error(response.error.message);
+      }
+
+      this.logger.log(
+        `Successfully sent custom broadcast email to ${data.recipientEmail} (Email ID: ${response.data?.id})`,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to send broadcast email to ${data.recipientEmail}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      throw error;
+    }
+  }
+
+  async sendBatchCustomBroadcast(
+    data: CustomEmailData[],
+  ): Promise<BatchCustomEmailResult> {
+    const totalTargeted = data.length;
+    const validData = data.filter(
+      (item) => item.recipientEmail && item.recipientEmail.trim() !== '',
+    );
+    const totalWithEmail = validData.length;
+
+    let totalSent = 0;
+    let totalFailed = 0;
+    const failedRecipients: Array<{ recipient: string; reason: string }> = [];
+
+    // User requested batch size limit = 60 recipients per chunk
+    const BATCH_LIMIT = 60;
+    for (let i = 0; i < validData.length; i += BATCH_LIMIT) {
+      const chunk = validData.slice(i, i + BATCH_LIMIT);
+
+      const emailPayloads = await Promise.all(
+        chunk.map(async (item) => {
+          let attachments: any[] | undefined = undefined;
+          let qrCodeDataUrlProp = item.qrCodeDataUrl;
+
+          if (item.qrCodeDataUrl && item.qrCodeDataUrl.startsWith('data:')) {
+            try {
+              const parts = item.qrCodeDataUrl.split(',');
+              const base64Part = parts[1];
+              const header = parts[0];
+
+              if (base64Part) {
+                const buffer = Buffer.from(base64Part, 'base64');
+                const mimeMatch = header.match(/data:(.*?);/);
+                const contentType = mimeMatch ? mimeMatch[1] : 'image/png';
+
+                attachments = [
+                  {
+                    filename: 'qrcode.png',
+                    content: buffer,
+                    contentType,
+                    contentId: 'qrcode',
+                  },
+                ];
+                qrCodeDataUrlProp = 'cid:qrcode';
+              }
+            } catch {
+              // ignore fallback
+            }
+          }
+
+          const html = await render(
+            React.createElement(CustomBroadcastEmail, {
+              recipientName: item.recipientName,
+              subject: item.subject,
+              heading: item.heading,
+              message: item.message,
+              ctaLabel: item.ctaLabel,
+              ctaUrl: item.ctaUrl,
+              churchName: item.churchName,
+              contactEmail: item.contactEmail,
+              contactPhone: item.contactPhone,
+              eventTitle: item.eventTitle,
+              eventDate: item.eventDate,
+              eventLocation: item.eventLocation,
+              registrationNumber: item.registrationNumber,
+              qrCodeDataUrl: qrCodeDataUrlProp,
+              teamName: item.teamName,
+              teamColor: item.teamColor,
+            }),
+          );
+
+          return {
+            from: this.fromAddress,
+            to: item.recipientEmail,
+            subject: item.subject,
+            html,
+            attachments,
+          };
+        }),
+      );
+
+      try {
+        const response = await this.resend.batch.send(emailPayloads);
+        if (response.error) {
+          this.logger.error(
+            `Resend batch send API error: ${response.error.message}`,
+          );
+          chunk.forEach((item) => {
+            totalFailed++;
+            failedRecipients.push({
+              recipient: item.recipientEmail,
+              reason: response.error?.message || 'Batch send failed',
+            });
+          });
+        } else if (response.data?.data) {
+          response.data.data.forEach(
+            (result: Record<string, unknown>, idx: number) => {
+              const recipient = chunk[idx].recipientEmail;
+              const resObj = result as { error?: { message?: string } };
+              if (resObj && resObj.error) {
+                totalFailed++;
+                failedRecipients.push({
+                  recipient,
+                  reason: resObj.error.message || 'Error sending to recipient',
+                });
+              } else {
+                totalSent++;
+              }
+            },
+          );
+        } else {
+          totalSent += chunk.length;
+        }
+      } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        this.logger.error(`Batch send chunk exception: ${errMsg}`);
+        chunk.forEach((item) => {
+          totalFailed++;
+          failedRecipients.push({
+            recipient: item.recipientEmail,
+            reason: errMsg,
+          });
+        });
+      }
+    }
+
+    return {
+      totalTargeted,
+      totalWithEmail,
+      totalSent,
+      totalFailed,
+      failedRecipients,
+    };
   }
 }

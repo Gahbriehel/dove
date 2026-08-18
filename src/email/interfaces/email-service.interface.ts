@@ -25,9 +25,41 @@ export interface AdminWelcomeEmailData {
   churchName?: string;
 }
 
+export interface CustomEmailData {
+  recipientEmail: string;
+  recipientName: string;
+  subject: string;
+  heading?: string;
+  message: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  churchName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
+  eventTitle?: string;
+  eventDate?: string;
+  eventLocation?: string;
+  registrationNumber?: string;
+  qrCodeDataUrl?: string;
+  teamName?: string;
+  teamColor?: string;
+}
+
+export interface BatchCustomEmailResult {
+  totalTargeted: number;
+  totalWithEmail: number;
+  totalSent: number;
+  totalFailed: number;
+  failedRecipients: Array<{ recipient: string; reason: string }>;
+}
+
 export interface IEmailService {
   sendRegistrationConfirmation(
     data: RegistrationConfirmationEmailData,
   ): Promise<void>;
   sendAdminWelcome(data: AdminWelcomeEmailData): Promise<void>;
+  sendCustomBroadcast(data: CustomEmailData): Promise<void>;
+  sendBatchCustomBroadcast(
+    data: CustomEmailData[],
+  ): Promise<BatchCustomEmailResult>;
 }

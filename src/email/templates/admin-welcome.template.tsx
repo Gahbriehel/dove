@@ -38,9 +38,13 @@ export const AdminWelcomeEmail = ({
             <Heading style={heading}>Welcome to the Admin Team!</Heading>
           </Section>
 
-          <Text style={paragraph}>Hello <strong>{recipientName}</strong>,</Text>
           <Text style={paragraph}>
-            An administrator account has been created for you on <strong>{churchName}</strong>. Below are your initial login credentials:
+            Hello <strong>{recipientName}</strong>,
+          </Text>
+          <Text style={paragraph}>
+            An administrator account has been created for you on{' '}
+            <strong>{churchName}</strong>. Below are your initial login
+            credentials:
           </Text>
 
           {/* Account Credentials Card */}
@@ -69,14 +73,18 @@ export const AdminWelcomeEmail = ({
           <Section style={warningBox}>
             <Text style={warningHeading}>⚠️ Security Warning</Text>
             <Text style={warningText}>
-              The password provided above is <strong>temporary</strong> and was generated during account creation. For security reasons, please log in and change your password immediately under your profile settings.
+              The password provided above is <strong>temporary</strong> and was
+              generated during account creation. For security reasons, please
+              log in and change your password immediately under your profile
+              settings.
             </Text>
           </Section>
 
           <Hr style={hr} />
 
           <Text style={footer}>
-            This is an automated email sent to {recipientEmail}. If you did not expect an admin account, please contact system administration.
+            This is an automated email sent to {recipientEmail}. If you did not
+            expect an admin account, please contact system administration.
           </Text>
         </Container>
       </Body>

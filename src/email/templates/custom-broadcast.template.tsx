@@ -13,128 +13,149 @@ import {
   Text,
 } from '@react-email/components';
 
-export interface RegistrationConfirmationEmailProps {
-  recipientName: string;
-  eventTitle: string;
-  eventDate?: string;
-  eventLocation?: string;
+export interface CustomBroadcastEmailProps {
+  recipientName?: string;
+  subject?: string;
+  heading?: string;
+  message?: string;
+  ctaLabel?: string;
+  ctaUrl?: string;
+  churchName?: string;
   contactEmail?: string;
   contactPhone?: string;
-  registrationNumber: string;
-  qrCodeDataUrl: string;
+  eventTitle?: string;
+  eventDate?: string;
+  eventLocation?: string;
+  registrationNumber?: string;
+  qrCodeDataUrl?: string;
   teamName?: string;
   teamColor?: string;
-  googleCalendarUrl?: string;
 }
 
-export const RegistrationConfirmationEmail = ({
-  recipientName = 'Valued Guest',
-  eventTitle = 'Church Event',
-  eventDate,
-  eventLocation,
+export const CustomBroadcastEmail = ({
+  recipientName = 'Member',
+  subject = 'Update from Church Administration',
+  heading: customHeading,
+  message = 'We have an important announcement for you.',
+  ctaLabel,
+  ctaUrl,
+  churchName = 'Dove Church',
   contactEmail,
   contactPhone,
-  registrationNumber = 'regEV001',
-  qrCodeDataUrl = '',
+  eventTitle,
+  eventDate,
+  eventLocation,
+  registrationNumber,
+  qrCodeDataUrl,
   teamName,
   teamColor,
-  googleCalendarUrl,
-}: RegistrationConfirmationEmailProps) => {
+}: CustomBroadcastEmailProps) => {
+  const displayHeading = customHeading || subject;
+
+  // Split multi-paragraph messages
+  const paragraphs = message.split('\n\n').filter((p) => p.trim().length > 0);
+
   return (
     <Html>
       <Head />
-      <Preview>Registration Confirmed for {eventTitle}</Preview>
+      <Preview>{subject}</Preview>
       <Body style={main}>
         <Container style={container}>
           {/* Header Banner */}
           <Section style={headerSection}>
-            <Text style={categoryBadge}>EVENT REGISTRATION</Text>
-            <Heading style={heading}>Registration Confirmed!</Heading>
+            <Text style={categoryBadge}>
+              {churchName ? churchName.toUpperCase() : 'ANNOUNCEMENT'}
+            </Text>
+            <Heading style={heading}>{displayHeading}</Heading>
           </Section>
 
           <Text style={paragraph}>
             Hello <strong>{recipientName}</strong>,
           </Text>
-          <Text style={paragraph}>
-            You have successfully registered for <strong>{eventTitle}</strong>.
-            Below are your event details and check-in pass.
-          </Text>
 
-          {/* Event & Registration Details Card */}
-          <Section style={detailsCard}>
-            <Text style={cardHeading}>Registration Overview</Text>
+          {/* Render Message Paragraphs */}
+          {paragraphs.map((para, idx) => (
+            <Text key={idx} style={paragraph}>
+              {para}
+            </Text>
+          ))}
 
-            <Section style={row}>
-              <Text style={label}>Registration Pass #</Text>
-              <Text style={regNumberBadge}>{registrationNumber}</Text>
-            </Section>
-
-            {eventDate && (
-              <Section style={row}>
-                <Text style={label}>Date & Time</Text>
-                <Text style={value}>{eventDate}</Text>
-              </Section>
-            )}
-
-            {eventLocation && (
-              <Section style={row}>
-                <Text style={label}>Location</Text>
-                <Text style={value}>{eventLocation}</Text>
-              </Section>
-            )}
-
-            {teamName && (
-              <Section style={row}>
-                <Text style={label}>Assigned Team</Text>
-                <Text style={teamValue}>
-                  <span
-                    style={{
-                      display: 'inline-block',
-                      padding: '4px 12px',
-                      borderRadius: '4px',
-                      backgroundColor: teamColor || '#2563eb',
-                      color: '#ffffff',
-                      fontWeight: 'bold',
-                      fontSize: '13px',
-                    }}
-                  >
-                    {teamName}
-                  </span>
-                </Text>
-              </Section>
-            )}
-          </Section>
-
-          {/* Add to Google Calendar Section */}
-          {googleCalendarUrl && (
-            <Section style={calendarSection}>
-              <Link href={googleCalendarUrl} style={calendarButton}>
-                📅 Add to Google Calendar
+          {/* Primary CTA Button if provided */}
+          {ctaLabel && ctaUrl && (
+            <Section style={ctaSection}>
+              <Link href={ctaUrl} style={ctaButton}>
+                {ctaLabel}
               </Link>
             </Section>
           )}
 
-          {/* Punctuality Notice */}
-          <Section style={noticeBox}>
-            <Text style={noticeHeading}>📌 Important Notice</Text>
-            <Text style={noticeText}>
-              We are expecting you! Please plan to arrive on time as punctuality
-              is very important for a smooth and enjoyable event experience for
-              everyone.
-            </Text>
-          </Section>
+          {/* Optional Event & Registration Card */}
+          {(eventTitle || registrationNumber) && (
+            <Section style={detailsCard}>
+              <Text style={cardHeading}>Event Details</Text>
 
-          {/* QR Code Pass Section */}
+              {eventTitle && (
+                <Section style={row}>
+                  <Text style={label}>Event</Text>
+                  <Text style={value}>{eventTitle}</Text>
+                </Section>
+              )}
+
+              {registrationNumber && (
+                <Section style={row}>
+                  <Text style={label}>Pass #</Text>
+                  <Text style={regNumberBadge}>{registrationNumber}</Text>
+                </Section>
+              )}
+
+              {eventDate && (
+                <Section style={row}>
+                  <Text style={label}>Date & Time</Text>
+                  <Text style={value}>{eventDate}</Text>
+                </Section>
+              )}
+
+              {eventLocation && (
+                <Section style={row}>
+                  <Text style={label}>Location</Text>
+                  <Text style={value}>{eventLocation}</Text>
+                </Section>
+              )}
+
+              {teamName && (
+                <Section style={row}>
+                  <Text style={label}>Assigned Team</Text>
+                  <Text style={teamValue}>
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '4px 12px',
+                        borderRadius: '4px',
+                        backgroundColor: teamColor || '#2563eb',
+                        color: '#ffffff',
+                        fontWeight: 'bold',
+                        fontSize: '13px',
+                      }}
+                    >
+                      {teamName}
+                    </span>
+                  </Text>
+                </Section>
+              )}
+            </Section>
+          )}
+
+          {/* QR Code Pass Section if provided */}
           {qrCodeDataUrl && (
             <Section style={qrSection}>
-              <Text style={qrHeading}>Your Check-in Pass</Text>
+              <Text style={qrHeading}>Check-in Pass</Text>
               <Text style={qrSubtext}>
-                Please present this QR code to team members at the entrance:
+                Please present this QR code at the event entrance:
               </Text>
               <Img
                 src={qrCodeDataUrl}
-                width="180"
-                height="180"
+                width="160"
+                height="160"
                 alt="Check-in QR Code"
                 style={qrImage}
               />
@@ -147,9 +168,6 @@ export const RegistrationConfirmationEmail = ({
           <Section style={contactSection}>
             <Text style={contactHeading}>
               Need assistance or have questions?
-            </Text>
-            <Text style={contactText}>
-              We're here to help! You can reach back out to us anytime:
             </Text>
             {contactPhone && (
               <Text style={contactItem}>
@@ -170,7 +188,7 @@ export const RegistrationConfirmationEmail = ({
           </Section>
 
           <Text style={footer}>
-            This is an automated confirmation email. Thank you for registering!
+            Sent via {churchName || 'Dove Platform'}. Thank you!
           </Text>
         </Container>
       </Body>
@@ -222,6 +240,23 @@ const paragraph = {
   color: '#334155',
 };
 
+const ctaSection = {
+  textAlign: 'center' as const,
+  margin: '24px 0',
+};
+
+const ctaButton = {
+  display: 'inline-block',
+  backgroundColor: '#2563eb',
+  color: '#ffffff',
+  padding: '12px 24px',
+  borderRadius: '6px',
+  fontSize: '15px',
+  fontWeight: '700',
+  textDecoration: 'none',
+  textAlign: 'center' as const,
+};
+
 const detailsCard = {
   padding: '20px',
   backgroundColor: '#f1f5f9',
@@ -231,10 +266,10 @@ const detailsCard = {
 };
 
 const cardHeading = {
-  fontSize: '15px',
+  fontSize: '14px',
   fontWeight: '700',
   color: '#0f172a',
-  margin: '0 0 14px 0',
+  margin: '0 0 12px 0',
   textTransform: 'uppercase' as const,
   letterSpacing: '0.5px',
 };
@@ -260,7 +295,7 @@ const value = {
 };
 
 const regNumberBadge = {
-  fontSize: '16px',
+  fontSize: '15px',
   fontFamily: 'monospace',
   fontWeight: '700',
   color: '#0f172a',
@@ -274,28 +309,6 @@ const regNumberBadge = {
 
 const teamValue = {
   margin: '2px 0 0 0',
-};
-
-const noticeBox = {
-  backgroundColor: '#eff6ff',
-  borderLeft: '4px solid #2563eb',
-  borderRadius: '8px',
-  padding: '16px 20px',
-  margin: '24px 0',
-};
-
-const noticeHeading = {
-  fontSize: '14px',
-  fontWeight: '700',
-  color: '#1e40af',
-  margin: '0 0 6px 0',
-};
-
-const noticeText = {
-  fontSize: '14px',
-  lineHeight: '1.5',
-  color: '#1e3a8a',
-  margin: '0',
 };
 
 const qrSection = {
@@ -347,12 +360,6 @@ const contactHeading = {
   margin: '0 0 4px 0',
 };
 
-const contactText = {
-  fontSize: '13px',
-  color: '#475569',
-  margin: '0 0 10px 0',
-};
-
 const contactItem = {
   fontSize: '13px',
   color: '#334155',
@@ -367,25 +374,4 @@ const footer = {
   margin: '0',
 };
 
-const calendarSection = {
-  textAlign: 'center' as const,
-  margin: '20px 0',
-  padding: '16px 20px',
-  backgroundColor: '#f8fafc',
-  borderRadius: '8px',
-  border: '1px dashed #cbd5e1',
-};
-
-const calendarButton = {
-  display: 'inline-block',
-  backgroundColor: '#2563eb',
-  color: '#ffffff',
-  padding: '10px 20px',
-  borderRadius: '6px',
-  fontSize: '14px',
-  fontWeight: '700',
-  textDecoration: 'none',
-  textAlign: 'center' as const,
-};
-
-export default RegistrationConfirmationEmail;
+export default CustomBroadcastEmail;

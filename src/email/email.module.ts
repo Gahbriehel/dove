@@ -1,12 +1,17 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { PrismaModule } from '../prisma/prisma.module';
+import { EmailController } from './email.controller';
+import { EmailService } from './email.service';
 import { EMAIL_SERVICE } from './interfaces/email-service.interface';
 import { ConsoleEmailProvider } from './providers/console-email.provider';
 import { ResendEmailProvider } from './providers/resend-email.provider';
 
 @Module({
-  imports: [ConfigModule],
+  imports: [ConfigModule, PrismaModule],
+  controllers: [EmailController],
   providers: [
+    EmailService,
     {
       provide: EMAIL_SERVICE,
       useFactory: (configService: ConfigService) => {
@@ -23,6 +28,6 @@ import { ResendEmailProvider } from './providers/resend-email.provider';
       inject: [ConfigService],
     },
   ],
-  exports: [EMAIL_SERVICE],
+  exports: [EmailService, EMAIL_SERVICE],
 })
 export class EmailModule {}
