@@ -3,7 +3,7 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, RegistrationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -141,6 +141,24 @@ export class EventsService {
 
     if (effectiveStart >= effectiveEnd) {
       throw new BadRequestException('startDate must be earlier than endDate');
+    }
+
+    if (
+      updateEventDto.capacity !== undefined &&
+      updateEventDto.capacity !== null
+    ) {
+      const activeRegistrationsCount = await this.prisma.registration.count({
+        where: {
+          eventId: id,
+          status: { not: RegistrationStatus.CANCELLED },
+        },
+      });
+
+      if (updateEventDto.capacity < activeRegistrationsCount) {
+        throw new BadRequestException(
+          `Cannot reduce capacity to ${updateEventDto.capacity} because there are already ${activeRegistrationsCount} active registrations.`,
+        );
+      }
     }
 
     const data: Prisma.EventUpdateInput = { ...rest };

@@ -4,11 +4,13 @@ import {
   IsBoolean,
   IsDateString,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 export class CreateEventDto {
@@ -54,6 +56,16 @@ export class CreateEventDto {
   @IsOptional()
   @MaxLength(255)
   location?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Maximum registration capacity for the event (optional, omitted or null for unlimited capacity)',
+    example: 100,
+  })
+  @IsInt()
+  @Min(1)
+  @IsOptional()
+  capacity?: number;
 
   @ApiProperty({ description: 'Event start date and time (ISO 8601 string)' })
   @IsDateString()

@@ -146,6 +146,22 @@ export class RegistrationsService {
           });
         }
 
+        // 2b. Check event capacity limit
+        if (event.capacity !== null && event.capacity !== undefined) {
+          const currentRegistrationCount = await tx.registration.count({
+            where: {
+              eventId,
+              status: { not: RegistrationStatus.CANCELLED },
+            },
+          });
+
+          if (currentRegistrationCount >= event.capacity) {
+            throw new BadRequestException(
+              'Registration is closed for this event because it has reached maximum capacity.',
+            );
+          }
+        }
+
         // 3. Balanced Team Assignment
         const teams = await tx.team.findMany({
           where: { eventId },

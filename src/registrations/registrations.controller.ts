@@ -40,7 +40,8 @@ export class RegistrationsController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Missing required inputs (email/phone)',
+    description:
+      'Missing required inputs (email/phone), event has ended, or event capacity is full',
   })
   @ApiResponse({ status: 404, description: 'Event not found' })
   @ApiResponse({

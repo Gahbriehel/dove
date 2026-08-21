@@ -151,6 +151,7 @@ model Event {
   status             EventStatus @default(DRAFT)
   imageUrl           String?     @map("image_url") @db.VarChar(512)
   googleCalendarSync Boolean     @default(false) @map("google_calendar_sync")
+  capacity           Int?        @map("capacity")
   createdAt          DateTime    @default(now()) @map("created_at")
   updatedAt          DateTime    @updatedAt @map("updated_at")
 
