@@ -14,6 +14,8 @@ describe('EventsService', () => {
     event: {
       create: jest.Mock;
       findFirst: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
       update: jest.Mock;
     };
     registration: {
@@ -30,6 +32,8 @@ describe('EventsService', () => {
       event: {
         create: jest.fn(),
         findFirst: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
         update: jest.fn(),
       },
       registration: {
@@ -82,6 +86,66 @@ describe('EventsService', () => {
           churchId: 'church-1',
         },
       });
+    });
+  });
+
+  describe('findAll', () => {
+    it('should return events formatted with checkedInCount, registeredCount, games, teams without _count', async () => {
+      prismaMock.event.findMany.mockResolvedValue([
+        {
+          id: 'event-1',
+          title: 'Worship Night',
+          church: { id: 'church-1', name: 'Grace Church', slug: 'grace' },
+          registrations: [
+            { status: RegistrationStatus.CHECKED_IN },
+            { status: RegistrationStatus.CONFIRMED },
+            { status: RegistrationStatus.CHECKED_IN },
+          ],
+          _count: {
+            registrations: 3,
+            teams: 2,
+            games: 4,
+          },
+        },
+      ]);
+      prismaMock.event.count.mockResolvedValue(1);
+
+      const result = await service.findAll({}, 'church-1');
+
+      expect(result.items[0]).toEqual({
+        id: 'event-1',
+        title: 'Worship Night',
+        church: { id: 'church-1', name: 'Grace Church', slug: 'grace' },
+        checkedInCount: 2,
+        registeredCount: 3,
+        games: 4,
+        teams: 2,
+      });
+      expect(result.items[0]).not.toHaveProperty('_count');
+    });
+  });
+
+  describe('findOne', () => {
+    it('should return single event with checkedInCount and registeredCount without _count', async () => {
+      prismaMock.event.findFirst.mockResolvedValue({
+        id: 'event-1',
+        title: 'Leadership Summit',
+        church: { id: 'church-1', name: 'Grace Church', slug: 'grace' },
+        teams: [{ id: 'team-1' }],
+        games: [{ id: 'game-1' }],
+        registrations: [{ status: RegistrationStatus.CHECKED_IN }],
+        _count: {
+          registrations: 1,
+          teams: 1,
+          games: 1,
+        },
+      });
+
+      const result = await service.findOne('event-1', 'church-1');
+
+      expect(result.checkedInCount).toEqual(1);
+      expect(result.registeredCount).toEqual(1);
+      expect(result).not.toHaveProperty('_count');
     });
   });
 

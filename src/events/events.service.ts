@@ -83,6 +83,9 @@ export class EventsService {
           church: {
             select: { id: true, name: true, slug: true },
           },
+          registrations: {
+            select: { status: true },
+          },
           _count: {
             select: { registrations: true, teams: true, games: true },
           },
@@ -91,8 +94,28 @@ export class EventsService {
       this.prisma.event.count({ where }),
     ]);
 
+    const formattedItems = items.map((item) => {
+      const { _count, registrations, ...rest } = item;
+      const registeredCount = _count?.registrations ?? 0;
+      const checkedInCount = registrations
+        ? registrations.filter(
+            (r) => r.status === RegistrationStatus.CHECKED_IN,
+          ).length
+        : 0;
+      const games = _count?.games ?? 0;
+      const teams = _count?.teams ?? 0;
+
+      return {
+        ...rest,
+        checkedInCount,
+        registeredCount,
+        games,
+        teams,
+      };
+    });
+
     return {
-      items,
+      items: formattedItems,
       meta: {
         total,
         page,
@@ -114,8 +137,11 @@ export class EventsService {
         },
         teams: true,
         games: true,
+        registrations: {
+          select: { status: true },
+        },
         _count: {
-          select: { registrations: true },
+          select: { registrations: true, teams: true, games: true },
         },
       },
     });
@@ -124,7 +150,22 @@ export class EventsService {
       throw new NotFoundException(`Event with ID "${id}" not found`);
     }
 
-    return event;
+    const { _count, registrations, ...rest } = event;
+    const registeredCount = _count?.registrations ?? 0;
+    const checkedInCount = registrations
+      ? registrations.filter((r) => r.status === RegistrationStatus.CHECKED_IN)
+          .length
+      : 0;
+    const gamesCount = _count?.games ?? rest.games?.length ?? 0;
+    const teamsCount = _count?.teams ?? rest.teams?.length ?? 0;
+
+    return {
+      ...rest,
+      checkedInCount,
+      registeredCount,
+      gamesCount,
+      teamsCount,
+    };
   }
 
   async update(
