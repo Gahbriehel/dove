@@ -52,11 +52,7 @@ export class RegistrationsService {
       throw new NotFoundException(`Event with ID "${eventId}" not found`);
     }
 
-    // Adjust for GMT+1 time zone (server is 1 hr behind client)
-    const currentClientTime = new Date();
-    currentClientTime.setHours(currentClientTime.getHours() + 1);
-
-    if (event.endDate && event.endDate < currentClientTime) {
+    if (event.endDate && event.endDate < new Date()) {
       throw new BadRequestException(
         'Registration is closed for this event because it has already ended.',
       );
@@ -240,6 +236,7 @@ export class RegistrationsService {
     if (recipientPerson.email) {
       const formattedDate = event.startDate
         ? new Date(event.startDate).toLocaleString('en-US', {
+            timeZone: 'Africa/Lagos',
             dateStyle: 'full',
             timeStyle: 'short',
           })
@@ -527,6 +524,7 @@ export class RegistrationsService {
           startOutputType: 'utc',
           endInputType: 'utc',
           endOutputType: 'utc',
+          calName: `${event.title} (Africa/Lagos)`,
           title: event.title,
           description: event.description,
           location: event.location,
