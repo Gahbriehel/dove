@@ -44,6 +44,12 @@ export class DashboardOverviewDto {
 
   @ApiProperty({ description: 'Total active/published events', example: 3 })
   activeEvents: number;
+
+  @ApiPropertyOptional({
+    description: 'Total unresolved email delivery bounce alerts',
+    example: 2,
+  })
+  unresolvedBounceCount?: number;
 }
 
 export class MembershipBreakdownDto {
@@ -200,4 +206,7 @@ export class DashboardDataDto {
 
   @ApiProperty({ type: [UpcomingEventDto] })
   upcomingEvents: UpcomingEventDto[];
+
+  @ApiPropertyOptional()
+  recentBounceAlerts?: any[];
 }

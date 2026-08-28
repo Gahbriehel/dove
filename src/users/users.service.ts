@@ -22,6 +22,9 @@ const USER_SELECT = {
   createdAt: true,
   updatedAt: true,
   lastActive: true,
+  emailStatus: true,
+  emailBounceReason: true,
+  emailBouncedAt: true,
   userRoles: {
     include: {
       role: {

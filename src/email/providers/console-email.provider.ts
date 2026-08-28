@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   AdminWelcomeEmailData,
   BatchCustomEmailResult,
+  BounceAdminAlertEmailData,
   CustomEmailData,
   IEmailService,
   RegistrationConfirmationEmailData,
@@ -89,5 +90,20 @@ export class ConsoleEmailProvider implements IEmailService {
       totalFailed: 0,
       failedRecipients: [],
     });
+  }
+
+  sendBounceAdminAlert(data: BounceAdminAlertEmailData): Promise<void> {
+    this.logger.log(
+      `------------------------------------------------------------\n` +
+        `[BOUNCE ADMIN ALERT EMAIL DISPATCHED]\n` +
+        `To Admin: ${data.recipientEmail}\n` +
+        `Bounced Email: ${data.bouncedEmail}\n` +
+        `Event Type: ${data.eventType}\n` +
+        `Reason: ${data.reason || 'N/A'}\n` +
+        `Recipient Name: ${data.recipientName || 'N/A'}\n` +
+        `Church: ${data.churchName || 'Dove Platform'}\n` +
+        `------------------------------------------------------------`,
+    );
+    return Promise.resolve();
   }
 }

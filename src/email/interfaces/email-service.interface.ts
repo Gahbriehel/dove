@@ -15,6 +15,8 @@ export interface RegistrationConfirmationEmailData {
   teamColor?: string;
   googleCalendarUrl?: string;
   icsBuffer?: Buffer;
+  churchId?: string;
+  personId?: string;
 }
 
 export interface AdminWelcomeEmailData {
@@ -23,6 +25,8 @@ export interface AdminWelcomeEmailData {
   temporaryPassword: string;
   loginUrl?: string;
   churchName?: string;
+  churchId?: string;
+  userId?: string;
 }
 
 export interface CustomEmailData {
@@ -43,6 +47,19 @@ export interface CustomEmailData {
   qrCodeDataUrl?: string;
   teamName?: string;
   teamColor?: string;
+  churchId?: string;
+  personId?: string;
+  userId?: string;
+}
+
+export interface BounceAdminAlertEmailData {
+  recipientEmail: string;
+  bouncedEmail: string;
+  eventType: string;
+  reason?: string;
+  recipientName?: string;
+  recipientType?: string;
+  churchName?: string;
 }
 
 export interface BatchCustomEmailResult {
@@ -62,4 +79,5 @@ export interface IEmailService {
   sendBatchCustomBroadcast(
     data: CustomEmailData[],
   ): Promise<BatchCustomEmailResult>;
+  sendBounceAdminAlert(data: BounceAdminAlertEmailData): Promise<void>;
 }

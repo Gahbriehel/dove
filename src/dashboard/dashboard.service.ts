@@ -47,6 +47,8 @@ export class DashboardService {
       activeEvents,
       rawLatestRegistrations,
       rawUpcomingEvents,
+      unresolvedBounceCount,
+      recentBounceAlerts,
     ] = await Promise.all([
       // Total registrations for church events
       this.prisma.registration.count({
@@ -156,6 +158,18 @@ export class DashboardService {
           },
         },
       }),
+
+      // Unresolved Email Bounces Count
+      this.prisma.emailBounce.count({
+        where: { churchId, isResolved: false },
+      }),
+
+      // Recent Unresolved Email Bounces (take 5)
+      this.prisma.emailBounce.findMany({
+        where: { churchId, isResolved: false },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+      }),
     ]);
 
     const attendanceRate =
@@ -187,6 +201,7 @@ export class DashboardService {
         attendanceRate,
         totalEvents,
         activeEvents,
+        unresolvedBounceCount,
       },
       demographics: {
         membership: {
@@ -204,6 +219,7 @@ export class DashboardService {
       },
       latestRegistrations: rawLatestRegistrations,
       upcomingEvents,
+      recentBounceAlerts,
     };
   }
 }

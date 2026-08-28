@@ -6,11 +6,13 @@ import { Resend } from 'resend';
 import {
   AdminWelcomeEmailData,
   BatchCustomEmailResult,
+  BounceAdminAlertEmailData,
   CustomEmailData,
   IEmailService,
   RegistrationConfirmationEmailData,
 } from '../interfaces/email-service.interface';
 import { AdminWelcomeEmail } from '../templates/admin-welcome.template';
+import { BounceAdminAlertEmail } from '../templates/bounce-admin-alert.template';
 import { CustomBroadcastEmail } from '../templates/custom-broadcast.template';
 import { RegistrationConfirmationEmail } from '../templates/registration-confirmation.template';
 
@@ -89,12 +91,17 @@ export class ResendEmailProvider implements IEmailService {
         }),
       );
 
+      const headers: Record<string, string> = {};
+      if (data.churchId) headers['X-Dove-Church-Id'] = data.churchId;
+      if (data.personId) headers['X-Dove-Person-Id'] = data.personId;
+
       const response = await this.resend.emails.send({
         from: this.fromAddress,
         to: data.recipientEmail,
         subject: `Registration Confirmation: ${data.eventTitle}`,
         html,
         attachments,
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
       });
 
       if (response.error) {
@@ -128,11 +135,16 @@ export class ResendEmailProvider implements IEmailService {
         }),
       );
 
+      const headers: Record<string, string> = {};
+      if (data.churchId) headers['X-Dove-Church-Id'] = data.churchId;
+      if (data.userId) headers['X-Dove-User-Id'] = data.userId;
+
       const response = await this.resend.emails.send({
         from: this.fromAddress,
         to: data.recipientEmail,
         subject: `Welcome to ${data.churchName || 'Dove Platform'} - Your Admin Account Credentials`,
         html,
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
       });
 
       if (response.error) {
@@ -367,5 +379,42 @@ export class ResendEmailProvider implements IEmailService {
       totalFailed,
       failedRecipients,
     };
+  }
+
+  async sendBounceAdminAlert(data: BounceAdminAlertEmailData): Promise<void> {
+    try {
+      const html = await render(
+        React.createElement(BounceAdminAlertEmail, {
+          bouncedEmail: data.bouncedEmail,
+          eventType: data.eventType,
+          reason: data.reason,
+          recipientName: data.recipientName,
+          recipientType: data.recipientType,
+          churchName: data.churchName,
+        }),
+      );
+
+      const response = await this.resend.emails.send({
+        from: this.fromAddress,
+        to: data.recipientEmail,
+        subject: `🚨 Resend Bounce Alert: Delivery Failed for ${data.bouncedEmail}`,
+        html,
+      });
+
+      if (response.error) {
+        this.logger.error(
+          `Resend API error sending bounce alert to admin ${data.recipientEmail}: ${response.error.message}`,
+        );
+      } else {
+        this.logger.log(
+          `Successfully sent bounce admin alert to ${data.recipientEmail} regarding ${data.bouncedEmail}`,
+        );
+      }
+    } catch (error) {
+      this.logger.error(
+        `Failed to send bounce alert email to admin ${data.recipientEmail}`,
+        error instanceof Error ? error.stack : String(error),
+      );
+    }
   }
 }

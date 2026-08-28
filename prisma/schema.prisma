@@ -34,6 +34,13 @@ enum RegistrationStatus {
   CANCELLED
 }
 
+enum EmailDeliveryStatus {
+  DELIVERABLE
+  BOUNCED
+  DROPPED
+  COMPLAINED
+}
+
 model Church {
   id         String   @id @default(uuid())
   name       String   @db.VarChar(255)
@@ -55,17 +62,20 @@ model Church {
 }
 
 model User {
-  id           String   @id @default(uuid())
-  churchId     String   @map("church_id")
-  email        String   @unique @db.VarChar(255)
-  passwordHash String   @map("password_hash") @db.VarChar(255)
-  firstName    String   @map("first_name") @db.VarChar(100)
-  lastName     String   @map("last_name") @db.VarChar(100)
-  phone        String?  @db.VarChar(50)
-  isActive     Boolean  @default(true) @map("is_active")
-  lastActive   DateTime? @map("last_active")
-  createdAt    DateTime @default(now()) @map("created_at")
-  updatedAt    DateTime @updatedAt @map("updated_at")
+  id                String              @id @default(uuid())
+  churchId          String              @map("church_id")
+  email             String              @unique @db.VarChar(255)
+  passwordHash      String              @map("password_hash") @db.VarChar(255)
+  firstName         String              @map("first_name") @db.VarChar(100)
+  lastName          String              @map("last_name") @db.VarChar(100)
+  phone             String?             @db.VarChar(50)
+  isActive          Boolean             @default(true) @map("is_active")
+  lastActive        DateTime?           @map("last_active")
+  emailStatus       EmailDeliveryStatus @default(DELIVERABLE) @map("email_status")
+  emailBounceReason String?             @map("email_bounce_reason") @db.Text
+  emailBouncedAt    DateTime?           @map("email_bounced_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
 
   church        Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
   userRoles     UserRole[]
@@ -118,18 +128,21 @@ model RefreshToken {
 }
 
 model Person {
-  id               String           @id @default(uuid())
-  churchId         String           @map("church_id")
-  firstName        String           @map("first_name") @db.VarChar(100)
-  lastName         String           @map("last_name") @db.VarChar(100)
-  email            String?          @db.VarChar(255)
-  phone            String?          @db.VarChar(50)
-  gender           Gender?
-  membershipStatus MembershipStatus @default(VISITOR) @map("membership_status")
-  dateOfBirth      DateTime?        @map("date_of_birth") @db.Date
-  address          String?          @db.Text
-  createdAt        DateTime         @default(now()) @map("created_at")
-  updatedAt        DateTime         @updatedAt @map("updated_at")
+  id                String              @id @default(uuid())
+  churchId          String              @map("church_id")
+  firstName         String              @map("first_name") @db.VarChar(100)
+  lastName          String              @map("last_name") @db.VarChar(100)
+  email             String?             @db.VarChar(255)
+  phone             String?             @db.VarChar(50)
+  gender            Gender?
+  membershipStatus  MembershipStatus    @default(VISITOR) @map("membership_status")
+  dateOfBirth       DateTime?           @map("date_of_birth") @db.Date
+  address           String?             @db.Text
+  emailStatus       EmailDeliveryStatus @default(DELIVERABLE) @map("email_status")
+  emailBounceReason String?             @map("email_bounce_reason") @db.Text
+  emailBouncedAt    DateTime?           @map("email_bounced_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
 
   church        Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
   registrations Registration[]
@@ -252,3 +265,26 @@ model Score {
   @@index([teamId])
   @@map("scores")
 }
+
+model EmailBounce {
+  id            String    @id @default(uuid())
+  churchId      String?   @map("church_id")
+  email         String    @db.VarChar(255)
+  resendEmailId String?   @map("resend_email_id") @db.VarChar(255)
+  eventType     String    @map("event_type") @db.VarChar(50)
+  bounceType    String?   @map("bounce_type") @db.VarChar(50)
+  reason        String?   @db.Text
+  recipientType String?   @map("recipient_type") @db.VarChar(50)
+  recipientId   String?   @map("recipient_id") @db.VarChar(255)
+  isResolved    Boolean   @default(false) @map("is_resolved")
+  resolvedAt    DateTime? @map("resolved_at")
+  resolvedBy    String?   @map("resolved_by")
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@index([churchId])
+  @@index([email])
+  @@index([isResolved])
+  @@map("email_bounces")
+}
+
