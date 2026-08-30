@@ -34,7 +34,19 @@ export class TransformInterceptor<T> implements NestInterceptor<
 
     return next.handle().pipe(
       map((data: T) => {
+        const req = context
+          .switchToHttp()
+          .getRequest<Record<string, unknown>>();
         let message = customMessage;
+
+        if (
+          !message &&
+          req &&
+          'customResponseMessage' in req &&
+          typeof req.customResponseMessage === 'string'
+        ) {
+          message = req.customResponseMessage;
+        }
 
         if (
           !message &&

@@ -54,9 +54,10 @@ model Church {
   createdAt  DateTime @default(now()) @map("created_at")
   updatedAt  DateTime @updatedAt @map("updated_at")
 
-  users  User[]
-  people Person[]
-  events Event[]
+  users              User[]
+  people             Person[]
+  events             Event[]
+  contactSubmissions ContactSubmission[]
 
   @@map("churches")
 }
@@ -288,3 +289,22 @@ model EmailBounce {
   @@map("email_bounces")
 }
 
+model ContactSubmission {
+  id        String   @id @db.VarChar(50)
+  churchId  String   @map("church_id")
+  type      String   @db.VarChar(20) // "prayer" or "inquiry"
+  name      String   @db.VarChar(255)
+  email     String   @db.VarChar(255)
+  phone     String?  @db.VarChar(50)
+  category  String   @db.VarChar(100)
+  message   String   @db.Text
+  isPrivate Boolean  @default(false) @map("is_private")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
+
+  @@index([churchId])
+  @@index([type])
+  @@map("contact_submissions")
+}

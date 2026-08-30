@@ -21,6 +21,7 @@ import { HealthModule } from './health/health.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { SettingsModule } from './settings/settings.module';
 import { UploadsModule } from './uploads/uploads.module';
+import { ContactModule } from './contact/contact.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -62,6 +63,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     DashboardModule,
     SettingsModule,
     UploadsModule,
+    ContactModule,
   ],
   controllers: [],
   providers: [
