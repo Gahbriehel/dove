@@ -1,18 +1,32 @@
 import {
   Body,
   Controller,
+  Get,
   Headers,
   HttpCode,
   HttpStatus,
   Param,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
+import {
+  CurrentUser,
+  type ActiveUserData,
+} from '../common/decorators/current-user.decorator';
+import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { ContactService } from './contact.service';
 import { CreateContactSubmissionDto } from './dto/create-contact-submission.dto';
+import { QueryContactSubmissionDto } from './dto/query-contact-submission.dto';
 
 export interface CustomRequest extends Request {
   customResponseMessage?: string;
@@ -59,5 +73,45 @@ export class ContactController {
         : 'Your inquiry has been submitted successfully.';
 
     return submission;
+  }
+
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Get('contact/submissions')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Contact submissions list retrieved successfully')
+  @ApiOperation({
+    summary: 'List all contact submissions (Admin/Super Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Contact submissions list retrieved successfully',
+  })
+  async findAll(
+    @Query() query: QueryContactSubmissionDto,
+    @CurrentUser() user: ActiveUserData,
+  ) {
+    return this.contactService.findAll(query, user);
+  }
+
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Get('contact/submissions/:id')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Contact submission details retrieved successfully')
+  @ApiOperation({
+    summary:
+      'Get details of a single contact submission (Admin/Super Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Contact submission details retrieved successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Contact submission not found',
+  })
+  async findOne(@Param('id') id: string, @CurrentUser() user: ActiveUserData) {
+    return this.contactService.findOne(id, user);
   }
 }

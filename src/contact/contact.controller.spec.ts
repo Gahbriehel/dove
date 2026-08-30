@@ -6,11 +6,15 @@ describe('ContactController', () => {
   let controller: ContactController;
   let serviceMock: {
     create: jest.Mock;
+    findAll: jest.Mock;
+    findOne: jest.Mock;
   };
 
   beforeEach(async () => {
     serviceMock = {
       create: jest.fn(),
+      findAll: jest.fn(),
+      findOne: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -164,5 +168,50 @@ describe('ContactController', () => {
       undefined,
     );
     expect(serviceMock.create).toHaveBeenCalledWith(dto, 'key-header');
+  });
+
+  describe('findAll', () => {
+    it('should call ContactService.findAll with query parameters and user', async () => {
+      const mockResult = {
+        items: [],
+        meta: { total: 0, page: 1, limit: 10, totalPages: 0 },
+      };
+      serviceMock.findAll.mockResolvedValue(mockResult);
+
+      const query = { page: 1, limit: 10 };
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+
+      const result = await controller.findAll(query, user);
+
+      expect(serviceMock.findAll).toHaveBeenCalledWith(query, user);
+      expect(result).toBe(mockResult);
+    });
+  });
+
+  describe('findOne', () => {
+    it('should call ContactService.findOne with id and user', async () => {
+      const mockSubmission = {
+        id: 'contact-1',
+        churchId: 'church-a',
+        type: 'prayer',
+      };
+      serviceMock.findOne.mockResolvedValue(mockSubmission);
+
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+      const result = await controller.findOne('contact-1', user);
+
+      expect(serviceMock.findOne).toHaveBeenCalledWith('contact-1', user);
+      expect(result).toBe(mockSubmission);
+    });
   });
 });

@@ -4,8 +4,11 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateContactSubmissionDto } from './dto/create-contact-submission.dto';
+import { QueryContactSubmissionDto } from './dto/query-contact-submission.dto';
+import { ActiveUserData } from '../common/decorators/current-user.decorator';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -84,5 +87,81 @@ export class ContactService {
         isPrivate: isPrivateValue,
       },
     });
+  }
+
+  async findAll(query: QueryContactSubmissionDto, user: ActiveUserData) {
+    const { type, category, search, churchId, page = 1, limit = 10 } = query;
+    const skip = (page - 1) * limit;
+
+    const isSuperAdmin = user.roles.includes('SUPER_ADMIN');
+
+    const where: Prisma.ContactSubmissionWhereInput = {};
+
+    if (isSuperAdmin) {
+      if (churchId) {
+        where.churchId = churchId;
+      }
+    } else {
+      where.churchId = user.churchId;
+    }
+
+    if (type) {
+      where.type = type;
+    }
+
+    if (category) {
+      where.category = category;
+    }
+
+    if (search) {
+      where.OR = [
+        { name: { contains: search } },
+        { email: { contains: search } },
+        { phone: { contains: search } },
+        { message: { contains: search } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      this.prisma.contactSubmission.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.contactSubmission.count({ where }),
+    ]);
+
+    return {
+      items,
+      meta: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  }
+
+  async findOne(id: string, user: ActiveUserData) {
+    const isSuperAdmin = user.roles.includes('SUPER_ADMIN');
+
+    const submission = await this.prisma.contactSubmission.findUnique({
+      where: { id },
+    });
+
+    if (!submission) {
+      throw new NotFoundException(
+        `Contact submission with ID "${id}" not found`,
+      );
+    }
+
+    if (!isSuperAdmin && submission.churchId !== user.churchId) {
+      throw new NotFoundException(
+        `Contact submission with ID "${id}" not found`,
+      );
+    }
+
+    return submission;
   }
 }

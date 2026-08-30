@@ -12,6 +12,9 @@ describe('ContactService', () => {
     };
     contactSubmission: {
       create: jest.Mock;
+      findMany: jest.Mock;
+      count: jest.Mock;
+      findUnique: jest.Mock;
     };
   };
 
@@ -23,6 +26,9 @@ describe('ContactService', () => {
       },
       contactSubmission: {
         create: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+        findUnique: jest.fn(),
       },
     };
 
@@ -183,6 +189,138 @@ describe('ContactService', () => {
       };
 
       await expect(service.create(dto)).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('findAll', () => {
+    it('should return contact submissions filtered for normal ADMIN', async () => {
+      const mockSubmissions = [
+        { id: '1', churchId: 'church-a', type: 'prayer', name: 'Jane' },
+      ];
+      prismaMock.contactSubmission.findMany.mockResolvedValue(mockSubmissions);
+      prismaMock.contactSubmission.count.mockResolvedValue(1);
+
+      const query = { page: 1, limit: 10 };
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+
+      const result = await service.findAll(query, user);
+
+      expect(prismaMock.contactSubmission.findMany).toHaveBeenCalledWith({
+        where: { churchId: 'church-a' },
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 10,
+      });
+      expect(result.items).toEqual(mockSubmissions);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it('should permit SUPER_ADMIN to query across all churches', async () => {
+      prismaMock.contactSubmission.findMany.mockResolvedValue([]);
+      prismaMock.contactSubmission.count.mockResolvedValue(0);
+
+      const query = { page: 1, limit: 10 };
+      const user = {
+        sub: 'u1',
+        email: 'sa@a.com',
+        roles: ['SUPER_ADMIN'],
+        churchId: 'church-a',
+      };
+
+      await service.findAll(query, user);
+
+      expect(prismaMock.contactSubmission.findMany).toHaveBeenCalledWith({
+        where: {},
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 10,
+      });
+    });
+
+    it('should query a specific church for SUPER_ADMIN when churchId is provided', async () => {
+      prismaMock.contactSubmission.findMany.mockResolvedValue([]);
+      prismaMock.contactSubmission.count.mockResolvedValue(0);
+
+      const query = { page: 1, limit: 10, churchId: 'church-b' };
+      const user = {
+        sub: 'u1',
+        email: 'sa@a.com',
+        roles: ['SUPER_ADMIN'],
+        churchId: 'church-a',
+      };
+
+      await service.findAll(query, user);
+
+      expect(prismaMock.contactSubmission.findMany).toHaveBeenCalledWith({
+        where: { churchId: 'church-b' },
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 10,
+      });
+    });
+  });
+
+  describe('findOne', () => {
+    it('should return contact submission if churchId matches normal ADMIN', async () => {
+      const mockSubmission = {
+        id: 'contact-1',
+        churchId: 'church-a',
+        type: 'prayer',
+      };
+      prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
+
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+      const result = await service.findOne('contact-1', user);
+
+      expect(result).toEqual(mockSubmission);
+    });
+
+    it('should throw NotFoundException if churchId does not match normal ADMIN', async () => {
+      const mockSubmission = {
+        id: 'contact-1',
+        churchId: 'church-other',
+        type: 'prayer',
+      };
+      prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
+
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+      await expect(service.findOne('contact-1', user)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should return contact submission for SUPER_ADMIN regardless of churchId', async () => {
+      const mockSubmission = {
+        id: 'contact-1',
+        churchId: 'church-other',
+        type: 'prayer',
+      };
+      prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
+
+      const user = {
+        sub: 'u1',
+        email: 'sa@a.com',
+        roles: ['SUPER_ADMIN'],
+        churchId: 'church-a',
+      };
+      const result = await service.findOne('contact-1', user);
+
+      expect(result).toEqual(mockSubmission);
     });
   });
 });
