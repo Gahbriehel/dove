@@ -35,8 +35,9 @@ export class SendPersonEmailDto {
 
   @ApiProperty({
     description:
-      'Email message content (supports double line break paragraphs and placeholders)',
-    example: 'Hi {{firstName}},\n\nWe are glad to have you in our community.',
+      'Email message content. Accepts either plain text (double line breaks become paragraphs) or rich-text HTML (e.g. from a WYSIWYG editor like Quill) — HTML is sanitized to a safe subset of tags before sending. Supports placeholders.',
+    example:
+      '<p>Hi {{firstName}},</p><p>We are glad to have you in our community.</p>',
   })
   @IsString()
   @IsNotEmpty()

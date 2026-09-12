@@ -12,6 +12,7 @@ import {
   Section,
   Text,
 } from '@react-email/components';
+import { isHtmlContent, sanitizeEmailHtml } from '../utils/sanitize-html.util';
 
 export interface CustomBroadcastEmailProps {
   recipientName?: string;
@@ -52,8 +53,18 @@ export const CustomBroadcastEmail = ({
 }: CustomBroadcastEmailProps) => {
   const displayHeading = customHeading || subject;
 
-  // Split multi-paragraph messages
-  const paragraphs = message.split('\n\n').filter((p) => p.trim().length > 0);
+  // Rich-text editors (e.g. Quill) always emit HTML, even for plain
+  // single-line messages, so detect and sanitize HTML content rather than
+  // treating it as literal text.
+  const messageIsHtml = isHtmlContent(message);
+  const sanitizedMessageHtml = messageIsHtml
+    ? sanitizeEmailHtml(message)
+    : undefined;
+
+  // Split multi-paragraph plain-text messages
+  const paragraphs = messageIsHtml
+    ? []
+    : message.split('\n\n').filter((p) => p.trim().length > 0);
 
   return (
     <Html>
@@ -73,12 +84,19 @@ export const CustomBroadcastEmail = ({
             Hello <strong>{recipientName}</strong>,
           </Text>
 
-          {/* Render Message Paragraphs */}
-          {paragraphs.map((para, idx) => (
-            <Text key={idx} style={paragraph}>
-              {para}
-            </Text>
-          ))}
+          {/* Render Message Content */}
+          {messageIsHtml ? (
+            <div
+              style={paragraph}
+              dangerouslySetInnerHTML={{ __html: sanitizedMessageHtml! }}
+            />
+          ) : (
+            paragraphs.map((para, idx) => (
+              <Text key={idx} style={paragraph}>
+                {para}
+              </Text>
+            ))
+          )}
 
           {/* Primary CTA Button if provided */}
           {ctaLabel && ctaUrl && (

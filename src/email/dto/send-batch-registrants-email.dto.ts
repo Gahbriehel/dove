@@ -70,9 +70,9 @@ export class SendBatchRegistrantsEmailDto {
 
   @ApiProperty({
     description:
-      'Email message content (supports double line break paragraphs and placeholders)',
+      'Email message content. Accepts either plain text (double line breaks become paragraphs) or rich-text HTML (e.g. from a WYSIWYG editor like Quill) — HTML is sanitized to a safe subset of tags before sending. Supports placeholders.',
     example:
-      'Dear {{firstName}},\n\nPlease be reminded of the venue guidelines for {{eventTitle}}.',
+      '<p>Dear {{firstName}},</p><p>Please be reminded of the venue guidelines for {{eventTitle}}.</p>',
   })
   @IsString()
   @IsNotEmpty()
