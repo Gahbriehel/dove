@@ -6,11 +6,14 @@ import {
   HttpStatus,
   Logger,
   Post,
+  Req,
   UnauthorizedException,
 } from '@nestjs/common';
+import type { RawBodyRequest } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import * as crypto from 'crypto';
+import type { Request } from 'express';
 import { Public } from '../../common/decorators/public.decorator';
 import { ResendWebhookPayloadDto } from '../dto/resend-webhook.dto';
 import { EmailBounceService } from '../services/email-bounce.service';
@@ -34,6 +37,7 @@ export class ResendWebhookController {
   @ApiResponse({ status: 200, description: 'Webhook processed successfully' })
   @ApiResponse({ status: 401, description: 'Invalid Svix webhook signature' })
   async handleResendWebhook(
+    @Req() request: RawBodyRequest<Request>,
     @Body() payload: ResendWebhookPayloadDto,
     @Headers('svix-id') svixId?: string,
     @Headers('svix-timestamp') svixTimestamp?: string,
@@ -52,11 +56,18 @@ export class ResendWebhookController {
         throw new UnauthorizedException('Missing webhook signature headers');
       }
 
+      if (!request.rawBody) {
+        this.logger.error(
+          'Raw request body unavailable for Resend webhook signature verification',
+        );
+        throw new UnauthorizedException('Unable to verify webhook signature');
+      }
+
       const isValid = this.verifySvixSignature(
         webhookSecret,
         svixId,
         svixTimestamp,
-        payload,
+        request.rawBody,
         svixSignature,
       );
 
@@ -74,7 +85,7 @@ export class ResendWebhookController {
     secret: string,
     msgId: string,
     msgTimestamp: string,
-    payload: unknown,
+    rawBody: Buffer,
     signatureHeader: string,
   ): boolean {
     try {
@@ -83,9 +94,10 @@ export class ResendWebhookController {
         : secret;
       const secretBytes = Buffer.from(formattedSecret, 'base64');
 
-      const bodyString =
-        typeof payload === 'string' ? payload : JSON.stringify(payload);
-      const toSign = `${msgId}.${msgTimestamp}.${bodyString}`;
+      const toSign = Buffer.concat([
+        Buffer.from(`${msgId}.${msgTimestamp}.`),
+        rawBody,
+      ]);
 
       const computedHmac = crypto
         .createHmac('sha256', secretBytes)

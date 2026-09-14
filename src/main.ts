@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     bufferLogs: true,
+    rawBody: true,
   });
   app.useLogger(app.get(PinoLogger));
   app.enableShutdownHooks();
