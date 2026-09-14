@@ -175,6 +175,10 @@ export class EmailBounceService {
           churchName,
         });
       }
+    } else {
+      this.logger.warn(
+        `Bounce event ${bounceLog.id} for ${bouncedEmail} could not be linked to a church (no matching Person/User and no X-Dove-Church-Id header) — admin alert not sent.`,
+      );
     }
 
     return {

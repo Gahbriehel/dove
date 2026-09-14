@@ -220,12 +220,18 @@ export class ResendEmailProvider implements IEmailService {
         }),
       );
 
+      const headers: Record<string, string> = {};
+      if (data.churchId) headers['X-Dove-Church-Id'] = data.churchId;
+      if (data.personId) headers['X-Dove-Person-Id'] = data.personId;
+      if (data.userId) headers['X-Dove-User-Id'] = data.userId;
+
       const response = await this.resend.emails.send({
         from: this.fromAddress,
         to: data.recipientEmail,
         subject: data.subject,
         html,
         attachments,
+        headers: Object.keys(headers).length > 0 ? headers : undefined,
       });
 
       if (response.error) {
@@ -317,12 +323,18 @@ export class ResendEmailProvider implements IEmailService {
             }),
           );
 
+          const headers: Record<string, string> = {};
+          if (item.churchId) headers['X-Dove-Church-Id'] = item.churchId;
+          if (item.personId) headers['X-Dove-Person-Id'] = item.personId;
+          if (item.userId) headers['X-Dove-User-Id'] = item.userId;
+
           return {
             from: this.fromAddress,
             to: item.recipientEmail,
             subject: item.subject,
             html,
             attachments,
+            headers: Object.keys(headers).length > 0 ? headers : undefined,
           };
         }),
       );

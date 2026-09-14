@@ -72,6 +72,8 @@ export class EmailService {
       churchName: person.church?.name,
       contactEmail: person.church?.email || undefined,
       contactPhone: person.church?.phone || undefined,
+      churchId,
+      personId: person.id,
     };
 
     await this.emailProvider.sendCustomBroadcast(emailData);
@@ -156,6 +158,8 @@ export class EmailService {
         churchName: person.church?.name,
         contactEmail: person.church?.email || undefined,
         contactPhone: person.church?.phone || undefined,
+        churchId,
+        personId: person.id,
       });
     }
 
@@ -243,6 +247,8 @@ export class EmailService {
       qrCodeDataUrl,
       teamName: registration.team?.name,
       teamColor: registration.team?.color || undefined,
+      churchId,
+      personId: person.id,
     };
 
     await this.emailProvider.sendCustomBroadcast(emailData);
@@ -365,6 +371,8 @@ export class EmailService {
         qrCodeDataUrl,
         teamName: reg.team?.name,
         teamColor: reg.team?.color || undefined,
+        churchId,
+        personId: person.id,
       });
     }
 
