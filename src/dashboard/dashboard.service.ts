@@ -120,6 +120,7 @@ export class DashboardService {
               lastName: true,
               email: true,
               phone: true,
+              gender: true,
               membershipStatus: true,
             },
           },

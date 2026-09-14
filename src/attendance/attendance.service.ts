@@ -30,6 +30,7 @@ export class AttendanceService {
             lastName: true,
             email: true,
             phone: true,
+            gender: true,
             membershipStatus: true,
           },
         },
