@@ -273,35 +273,10 @@ export class ResendEmailProvider implements IEmailService {
 
       const emailPayloads = await Promise.all(
         chunk.map(async (item) => {
-          let attachments: any[] | undefined = undefined;
-          let qrCodeDataUrlProp = item.qrCodeDataUrl;
-
-          if (item.qrCodeDataUrl && item.qrCodeDataUrl.startsWith('data:')) {
-            try {
-              const parts = item.qrCodeDataUrl.split(',');
-              const base64Part = parts[1];
-              const header = parts[0];
-
-              if (base64Part) {
-                const buffer = Buffer.from(base64Part, 'base64');
-                const mimeMatch = header.match(/data:(.*?);/);
-                const contentType = mimeMatch ? mimeMatch[1] : 'image/png';
-
-                attachments = [
-                  {
-                    filename: 'qrcode.png',
-                    content: buffer,
-                    contentType,
-                    contentId: 'qrcode',
-                  },
-                ];
-                qrCodeDataUrlProp = 'cid:qrcode';
-              }
-            } catch {
-              // ignore fallback
-            }
-          }
-
+          // Resend's batch send API does not support attachments, so the
+          // QR code must stay embedded as a base64 data: URI rather than
+          // being converted to a cid: attachment reference (which the
+          // single-send path uses).
           const html = await render(
             React.createElement(CustomBroadcastEmail, {
               recipientName: item.recipientName,
@@ -317,7 +292,7 @@ export class ResendEmailProvider implements IEmailService {
               eventDate: item.eventDate,
               eventLocation: item.eventLocation,
               registrationNumber: item.registrationNumber,
-              qrCodeDataUrl: qrCodeDataUrlProp,
+              qrCodeDataUrl: item.qrCodeDataUrl,
               teamName: item.teamName,
               teamColor: item.teamColor,
             }),
@@ -333,7 +308,6 @@ export class ResendEmailProvider implements IEmailService {
             to: item.recipientEmail,
             subject: item.subject,
             html,
-            attachments,
             headers: Object.keys(headers).length > 0 ? headers : undefined,
           };
         }),
