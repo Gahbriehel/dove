@@ -140,7 +140,7 @@ export class EmailBounceService {
       },
     });
 
-    // 4. Send alert email to Church Super Admins / Admins
+    // 4. Send alert email to Church Super Admins
     if (churchId) {
       const churchAdmins = await this.prisma.user.findMany({
         where: {
@@ -150,7 +150,7 @@ export class EmailBounceService {
           userRoles: {
             some: {
               role: {
-                name: { in: ['SUPER_ADMIN', 'ADMIN'] },
+                name: 'SUPER_ADMIN',
               },
             },
           },
