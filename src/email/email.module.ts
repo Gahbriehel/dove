@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailBounceController } from './controllers/email-bounce.controller';
+import { QrController } from './controllers/qr.controller';
 import { EmailController } from './email.controller';
 import { EmailService } from './email.service';
 import { EMAIL_SERVICE } from './interfaces/email-service.interface';
@@ -17,6 +18,7 @@ import { ResendWebhookController } from './webhooks/resend-webhook.controller';
     EmailController,
     ResendWebhookController,
     EmailBounceController,
+    QrController,
   ],
   providers: [
     EmailService,

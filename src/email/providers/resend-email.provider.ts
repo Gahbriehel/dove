@@ -355,10 +355,10 @@ export class ResendEmailProvider implements IEmailService {
 
       const emailPayloads = await Promise.all(
         chunk.map(async (item) => {
-          // Resend's batch send API does not support attachments, so the
-          // QR code must stay embedded as a base64 data: URI rather than
-          // being converted to a cid: attachment reference (which the
-          // single-send path uses).
+          // Resend's batch send API supports neither attachments nor
+          // data: URI images, so item.qrCodeDataUrl is a hosted
+          // https:// URL here (see EmailService.sendToRegistrantsBatch),
+          // not a base64 data URI like the single-send path uses.
           const html = await render(
             React.createElement(CustomBroadcastEmail, {
               recipientName: item.recipientName,

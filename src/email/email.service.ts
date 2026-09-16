@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import * as QRCode from 'qrcode';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,6 +26,7 @@ export class EmailService {
 
   constructor(
     private readonly prisma: PrismaService,
+    private readonly configService: ConfigService,
     @Inject(EMAIL_SERVICE)
     private readonly emailProvider: IEmailService,
   ) {}
@@ -334,7 +336,12 @@ export class EmailService {
 
       let qrCodeDataUrl: string | undefined = undefined;
       if (dto.includeQrPass) {
-        qrCodeDataUrl = await QRCode.toDataURL(reg.token);
+        // Resend's batch send API supports neither attachments nor
+        // data: URI images (major email clients strip data: URIs from
+        // batch-sent mail), so batch emails link to a hosted QR image
+        // instead of embedding one inline.
+        const appUrl = this.configService.get<string>('appUrl');
+        qrCodeDataUrl = `${appUrl}/api/v1/qr/${encodeURIComponent(reg.token)}.png`;
       }
 
       const vars: Record<string, string> = {

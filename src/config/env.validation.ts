@@ -50,6 +50,10 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   LOGIN_URL: string = 'http://localhost:3000/login';
+
+  @IsString()
+  @IsOptional()
+  APP_URL: string = 'http://localhost:3000';
 }
 
 export function validate(config: Record<string, unknown>) {
