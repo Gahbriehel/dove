@@ -1,5 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Gender, MembershipStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
@@ -35,6 +35,7 @@ export class PeopleService {
     const {
       churchId: queryChurchId,
       membershipStatus,
+      gender,
       search,
       page = 1,
       limit = 10,
@@ -52,6 +53,10 @@ export class PeopleService {
       where.membershipStatus = membershipStatus;
     }
 
+    if (gender) {
+      where.gender = gender;
+    }
+
     if (search) {
       where.OR = [
         { firstName: { contains: search } },
@@ -61,7 +66,18 @@ export class PeopleService {
       ];
     }
 
-    const [items, total] = await Promise.all([
+    const [
+      items,
+      total,
+      visitorsCount,
+      membersCount,
+      workersCount,
+      leadersCount,
+      maleCount,
+      femaleCount,
+      otherGenderCount,
+      unspecifiedGenderCount,
+    ] = await Promise.all([
       this.prisma.person.findMany({
         where,
         skip,
@@ -97,6 +113,42 @@ export class PeopleService {
         },
       }),
       this.prisma.person.count({ where }),
+      this.prisma.person.count({
+        where: {
+          churchId: targetChurchId,
+          membershipStatus: MembershipStatus.VISITOR,
+        },
+      }),
+      this.prisma.person.count({
+        where: {
+          churchId: targetChurchId,
+          membershipStatus: MembershipStatus.MEMBER,
+        },
+      }),
+      this.prisma.person.count({
+        where: {
+          churchId: targetChurchId,
+          membershipStatus: MembershipStatus.WORKER,
+        },
+      }),
+      this.prisma.person.count({
+        where: {
+          churchId: targetChurchId,
+          membershipStatus: MembershipStatus.LEADER,
+        },
+      }),
+      this.prisma.person.count({
+        where: { churchId: targetChurchId, gender: Gender.MALE },
+      }),
+      this.prisma.person.count({
+        where: { churchId: targetChurchId, gender: Gender.FEMALE },
+      }),
+      this.prisma.person.count({
+        where: { churchId: targetChurchId, gender: Gender.OTHER },
+      }),
+      this.prisma.person.count({
+        where: { churchId: targetChurchId, gender: null },
+      }),
     ]);
 
     const formattedItems = items.map((person) => {
@@ -119,6 +171,21 @@ export class PeopleService {
         page,
         limit,
         totalPages: Math.ceil(total / limit),
+      },
+      stats: {
+        total: visitorsCount + membersCount + workersCount + leadersCount,
+        membership: {
+          visitors: visitorsCount,
+          members: membersCount,
+          workers: workersCount,
+          leaders: leadersCount,
+        },
+        gender: {
+          male: maleCount,
+          female: femaleCount,
+          other: otherGenderCount,
+          unspecified: unspecifiedGenderCount,
+        },
       },
     };
   }

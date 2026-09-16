@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { MembershipStatus } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { Gender, MembershipStatus } from '@prisma/client';
+import { Transform, Type } from 'class-transformer';
 import {
   IsEnum,
   IsInt,
@@ -10,6 +10,9 @@ import {
   Max,
   Min,
 } from 'class-validator';
+
+const toUpperCase = ({ value }: { value: unknown }) =>
+  typeof value === 'string' ? value.toUpperCase() : value;
 
 export class QueryPersonDto {
   @ApiPropertyOptional({ description: 'Filter by church ID' })
@@ -21,9 +24,19 @@ export class QueryPersonDto {
     enum: MembershipStatus,
     description: 'Filter by membership status',
   })
+  @Transform(toUpperCase)
   @IsEnum(MembershipStatus)
   @IsOptional()
   membershipStatus?: MembershipStatus;
+
+  @ApiPropertyOptional({
+    enum: Gender,
+    description: 'Filter by gender',
+  })
+  @Transform(toUpperCase)
+  @IsEnum(Gender)
+  @IsOptional()
+  gender?: Gender;
 
   @ApiPropertyOptional({
     description: 'Search by first name, last name, email, or phone',
