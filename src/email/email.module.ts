@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { PrismaModule } from '../prisma/prisma.module';
+import { PrismaService } from '../prisma/prisma.service';
 import { EmailBounceController } from './controllers/email-bounce.controller';
 import { EmailController } from './email.controller';
 import { EmailService } from './email.service';
@@ -22,18 +23,18 @@ import { ResendWebhookController } from './webhooks/resend-webhook.controller';
     EmailBounceService,
     {
       provide: EMAIL_SERVICE,
-      useFactory: (configService: ConfigService) => {
+      useFactory: (configService: ConfigService, prisma: PrismaService) => {
         const apiKey = configService.get<string>('RESEND_API_KEY');
         if (
           apiKey &&
           apiKey.trim() !== '' &&
           !apiKey.includes('<your-resend-api-key>')
         ) {
-          return new ResendEmailProvider(configService);
+          return new ResendEmailProvider(configService, prisma);
         }
         return new ConsoleEmailProvider();
       },
-      inject: [ConfigService],
+      inject: [ConfigService, PrismaService],
     },
   ],
   exports: [EmailService, EmailBounceService, EMAIL_SERVICE],

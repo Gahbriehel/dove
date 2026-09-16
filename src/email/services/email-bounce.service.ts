@@ -21,9 +21,16 @@ export class EmailBounceService {
   ): Promise<{ success: boolean; message: string }> {
     const { type, data } = payload;
 
-    // Only process delivery issue events
+    // Only process delivery issue events. Resend has no "email.dropped" event;
+    // email.failed (SMTP-level rejection) and email.suppressed (recipient on the
+    // suppression list) are the real equivalents of what "dropped" was meant to cover.
     if (
-      !['email.bounced', 'email.dropped', 'email.complained'].includes(type)
+      ![
+        'email.bounced',
+        'email.failed',
+        'email.suppressed',
+        'email.complained',
+      ].includes(type)
     ) {
       return { success: true, message: `Ignored event type: ${type}` };
     }
@@ -35,25 +42,34 @@ export class EmailBounceService {
 
     const bouncedEmail = recipients[0].toLowerCase().trim();
     const resendEmailId = data.email_id;
-    const bounceType = data.bounce?.type || 'Hard';
-    const reason = data.bounce?.message || `Event: ${type}`;
+    const bounceType = data.bounce?.type || data.suppressed?.type || 'Hard';
+    const reason =
+      data.bounce?.message ||
+      data.failed?.reason ||
+      data.suppressed?.message ||
+      `Event: ${type}`;
 
-    // Extract headers/tags for entity identification if available
-    let churchId: string | undefined = undefined;
-    let personId: string | undefined = undefined;
-    let userId: string | undefined = undefined;
+    // Resend's webhook payload carries no custom headers and only a size-limited
+    // tags map — the type/content of the original email is looked up from the
+    // EmailSendLog record written when it was sent (see ResendEmailProvider).
+    const sendLog = resendEmailId
+      ? await this.prisma.emailSendLog.findUnique({
+          where: { resendEmailId },
+        })
+      : null;
 
-    if (data.headers && Array.isArray(data.headers)) {
-      for (const h of data.headers) {
-        if (h.name === 'X-Dove-Church-Id') churchId = h.value;
-        if (h.name === 'X-Dove-Person-Id') personId = h.value;
-        if (h.name === 'X-Dove-User-Id') userId = h.value;
-      }
-    }
+    let churchId: string | undefined = sendLog?.churchId ?? undefined;
+    const personId: string | undefined = sendLog?.personId ?? undefined;
+    const userId: string | undefined = sendLog?.userId ?? undefined;
+    const emailType: string | undefined = sendLog?.emailType ?? undefined;
+    const registrationId: string | undefined =
+      sendLog?.registrationId ?? undefined;
+    const broadcastContent = sendLog?.broadcastContent ?? undefined;
 
     // Determine EmailDeliveryStatus enum mapping
     let newStatus: EmailDeliveryStatus = EmailDeliveryStatus.BOUNCED;
-    if (type === 'email.dropped') newStatus = EmailDeliveryStatus.DROPPED;
+    if (type === 'email.failed' || type === 'email.suppressed')
+      newStatus = EmailDeliveryStatus.DROPPED;
     if (type === 'email.complained') newStatus = EmailDeliveryStatus.COMPLAINED;
 
     let recipientType: string | null = null;
@@ -136,6 +152,9 @@ export class EmailBounceService {
         reason,
         recipientType,
         recipientId,
+        emailType,
+        registrationId,
+        broadcastContent,
         isResolved: false,
       },
     });
@@ -177,7 +196,7 @@ export class EmailBounceService {
       }
     } else {
       this.logger.warn(
-        `Bounce event ${bounceLog.id} for ${bouncedEmail} could not be linked to a church (no matching Person/User and no X-Dove-Church-Id header) — admin alert not sent.`,
+        `Bounce event ${bounceLog.id} for ${bouncedEmail} could not be linked to a church (no matching Person/User and no EmailSendLog record) — admin alert not sent.`,
       );
     }
 

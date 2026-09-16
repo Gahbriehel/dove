@@ -17,6 +17,7 @@ export interface RegistrationConfirmationEmailData {
   icsBuffer?: Buffer;
   churchId?: string;
   personId?: string;
+  registrationId?: string;
 }
 
 export interface AdminWelcomeEmailData {
@@ -50,6 +51,7 @@ export interface CustomEmailData {
   churchId?: string;
   personId?: string;
   userId?: string;
+  registrationId?: string;
 }
 
 export interface BounceAdminAlertEmailData {

@@ -249,6 +249,7 @@ export class EmailService {
       teamColor: registration.team?.color || undefined,
       churchId,
       personId: person.id,
+      registrationId: registration.id,
     };
 
     await this.emailProvider.sendCustomBroadcast(emailData);
@@ -373,6 +374,7 @@ export class EmailService {
         teamColor: reg.team?.color || undefined,
         churchId,
         personId: person.id,
+        registrationId: reg.id,
       });
     }
 

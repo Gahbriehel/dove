@@ -12,7 +12,10 @@ import * as crypto from 'crypto';
 import * as QRCode from 'qrcode';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
 import type { IEmailService } from '../email/interfaces/email-service.interface';
-import { createEvent } from 'ics';
+import {
+  generateGoogleCalendarUrl,
+  generateIcsBuffer,
+} from '../email/utils/calendar.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { QueryRegistrationDto } from './dto/query-registration.dto';
 import { RegisterDto } from './dto/register.dto';
@@ -255,7 +258,7 @@ export class RegistrationsService {
       let googleCalendarUrl: string | undefined = undefined;
       let icsBuffer: Buffer | undefined = undefined;
       if (event.googleCalendarSync && registration.googleCalendarSync) {
-        googleCalendarUrl = this.generateGoogleCalendarUrl({
+        googleCalendarUrl = generateGoogleCalendarUrl({
           title: event.title,
           startDate: event.startDate,
           endDate: event.endDate,
@@ -264,7 +267,7 @@ export class RegistrationsService {
         });
 
         try {
-          icsBuffer = await this.generateIcsBuffer({
+          icsBuffer = await generateIcsBuffer({
             title: event.title,
             startDate: event.startDate,
             endDate: event.endDate,
@@ -296,6 +299,9 @@ export class RegistrationsService {
           teamColor: assignedTeam.color || undefined,
           googleCalendarUrl,
           icsBuffer,
+          registrationId: registration.id,
+          churchId,
+          personId: recipientPerson.id,
         })
         .catch((err) => {
           this.logger.error(
@@ -484,75 +490,5 @@ export class RegistrationsService {
       .toUpperCase()
       .substring(0, identifierLength);
     return `${prefix}${initials}${fallbackHex}`;
-  }
-
-  private generateGoogleCalendarUrl(event: {
-    title: string;
-    startDate: Date;
-    endDate: Date;
-    description: string;
-    location: string;
-  }): string {
-    const baseUrl = 'https://calendar.google.com/calendar/render';
-    const text = encodeURIComponent(event.title);
-    const dates = `${this.formatDateForGoogleCalendar(event.startDate)}/${this.formatDateForGoogleCalendar(event.endDate)}`;
-    const details = encodeURIComponent(event.description);
-    const location = encodeURIComponent(event.location);
-
-    return `${baseUrl}?action=TEMPLATE&text=${text}&dates=${dates}&details=${details}&location=${location}`;
-  }
-
-  private formatDateForGoogleCalendar(date: Date): string {
-    return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-  }
-
-  private generateIcsBuffer(event: {
-    title: string;
-    startDate: Date;
-    endDate: Date;
-    description: string;
-    location: string;
-    organizerName: string;
-    organizerEmail: string;
-  }): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const start: [number, number, number, number, number] = [
-        event.startDate.getUTCFullYear(),
-        event.startDate.getUTCMonth() + 1,
-        event.startDate.getUTCDate(),
-        event.startDate.getUTCHours(),
-        event.startDate.getUTCMinutes(),
-      ];
-      const end: [number, number, number, number, number] = [
-        event.endDate.getUTCFullYear(),
-        event.endDate.getUTCMonth() + 1,
-        event.endDate.getUTCDate(),
-        event.endDate.getUTCHours(),
-        event.endDate.getUTCMinutes(),
-      ];
-
-      createEvent(
-        {
-          start,
-          end,
-          startInputType: 'utc',
-          startOutputType: 'utc',
-          endInputType: 'utc',
-          endOutputType: 'utc',
-          calName: `${event.title} (Africa/Lagos)`,
-          title: event.title,
-          description: event.description,
-          location: event.location,
-          organizer: { name: event.organizerName, email: event.organizerEmail },
-        },
-        (error, value) => {
-          if (error) {
-            reject(error);
-          } else {
-            resolve(Buffer.from(value, 'utf-8'));
-          }
-        },
-      );
-    });
   }
 }

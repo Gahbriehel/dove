@@ -30,15 +30,33 @@ export class ResendWebhookDataDto {
     message?: string;
   };
 
-  @ApiPropertyOptional()
-  @IsArray()
+  @ApiPropertyOptional({
+    description: 'Present on email.failed events (SMTP-level rejection)',
+  })
+  @IsObject()
   @IsOptional()
-  tags?: Array<{ name: string; value: string }>;
+  failed?: {
+    reason?: string;
+  };
 
-  @ApiPropertyOptional()
-  @IsArray()
+  @ApiPropertyOptional({
+    description:
+      'Present on email.suppressed events (recipient on suppression list)',
+  })
+  @IsObject()
   @IsOptional()
-  headers?: Array<{ name: string; value: string }>;
+  suppressed?: {
+    type?: string;
+    message?: string;
+  };
+
+  @ApiPropertyOptional({
+    description:
+      'Email tags as returned by Resend webhooks: a flat key/value map, not the array shape used when sending',
+  })
+  @IsObject()
+  @IsOptional()
+  tags?: Record<string, string>;
 }
 
 export class ResendWebhookPayloadDto {

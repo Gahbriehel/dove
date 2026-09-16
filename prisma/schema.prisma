@@ -268,25 +268,47 @@ model Score {
 }
 
 model EmailBounce {
-  id            String    @id @default(uuid())
-  churchId      String?   @map("church_id")
-  email         String    @db.VarChar(255)
-  resendEmailId String?   @map("resend_email_id") @db.VarChar(255)
-  eventType     String    @map("event_type") @db.VarChar(50)
-  bounceType    String?   @map("bounce_type") @db.VarChar(50)
-  reason        String?   @db.Text
-  recipientType String?   @map("recipient_type") @db.VarChar(50)
-  recipientId   String?   @map("recipient_id") @db.VarChar(255)
-  isResolved    Boolean   @default(false) @map("is_resolved")
-  resolvedAt    DateTime? @map("resolved_at")
-  resolvedBy    String?   @map("resolved_by")
-  createdAt     DateTime  @default(now()) @map("created_at")
-  updatedAt     DateTime  @updatedAt @map("updated_at")
+  id               String    @id @default(uuid())
+  churchId         String?   @map("church_id")
+  email            String    @db.VarChar(255)
+  resendEmailId    String?   @map("resend_email_id") @db.VarChar(255)
+  eventType        String    @map("event_type") @db.VarChar(50)
+  bounceType       String?   @map("bounce_type") @db.VarChar(50)
+  reason           String?   @db.Text
+  recipientType    String?   @map("recipient_type") @db.VarChar(50)
+  recipientId      String?   @map("recipient_id") @db.VarChar(255)
+  emailType        String?   @map("email_type") @db.VarChar(50)
+  registrationId   String?   @map("registration_id") @db.VarChar(255)
+  broadcastContent Json?     @map("broadcast_content")
+  isResolved       Boolean   @default(false) @map("is_resolved")
+  resolvedAt       DateTime? @map("resolved_at")
+  resolvedBy       String?   @map("resolved_by")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
 
   @@index([churchId])
   @@index([email])
   @@index([isResolved])
   @@map("email_bounces")
+}
+
+// Records what each outbound Resend email actually was, keyed by the id Resend
+// returns from its send API. Resend's bounce/complaint webhooks echo back only
+// `email_id` (no custom headers, and tags are a restricted 256-char ASCII-only
+// key/value store) — so this table, not email headers, is how a later bounce
+// event is linked back to its original email's type and content for resending.
+model EmailSendLog {
+  id               String   @id @default(uuid())
+  resendEmailId    String   @unique @map("resend_email_id") @db.VarChar(255)
+  emailType        String   @map("email_type") @db.VarChar(50)
+  churchId         String?  @map("church_id")
+  personId         String?  @map("person_id")
+  userId           String?  @map("user_id")
+  registrationId   String?  @map("registration_id") @db.VarChar(255)
+  broadcastContent Json?    @map("broadcast_content")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("email_send_logs")
 }
 
 model ContactSubmission {

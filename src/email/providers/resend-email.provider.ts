@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Prisma } from '@prisma/client';
 import { render } from '@react-email/render';
 import * as React from 'react';
 import { Resend } from 'resend';
+import { PrismaService } from '../../prisma/prisma.service';
 import {
   AdminWelcomeEmailData,
   BatchCustomEmailResult,
@@ -22,11 +24,53 @@ export class ResendEmailProvider implements IEmailService {
   private readonly resend: Resend;
   private readonly fromAddress: string;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly prisma: PrismaService,
+  ) {
     const apiKey = this.configService.get<string>('RESEND_API_KEY');
     this.resend = new Resend(apiKey);
     this.fromAddress =
       this.configService.get<string>('EMAIL_FROM') || 'onboarding@resend.dev';
+  }
+
+  /**
+   * Persists what this outbound email actually was, keyed by Resend's returned
+   * email id. Resend's bounce/complaint webhooks only echo back `email_id` (no
+   * custom headers, and tags are a restricted 256-char ASCII-only store), so this
+   * log — not email headers — is what lets a later bounce be linked back to its
+   * original type/content for resending. Logging failures must never fail the send,
+   * since the email itself already went out.
+   */
+  private async logEmailSend(
+    resendEmailId: string | undefined,
+    context: {
+      emailType: string;
+      churchId?: string;
+      personId?: string;
+      userId?: string;
+      registrationId?: string;
+      broadcastContent?: Prisma.InputJsonValue;
+    },
+  ): Promise<void> {
+    if (!resendEmailId) return;
+    try {
+      await this.prisma.emailSendLog.create({
+        data: {
+          resendEmailId,
+          emailType: context.emailType,
+          churchId: context.churchId,
+          personId: context.personId,
+          userId: context.userId,
+          registrationId: context.registrationId,
+          broadcastContent: context.broadcastContent,
+        },
+      });
+    } catch (error) {
+      this.logger.warn(
+        `Failed to record email send log for Resend email ${resendEmailId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
   }
 
   async sendRegistrationConfirmation(
@@ -91,9 +135,13 @@ export class ResendEmailProvider implements IEmailService {
         }),
       );
 
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = {
+        'X-Dove-Email-Type': 'REGISTRATION_CONFIRMATION',
+      };
       if (data.churchId) headers['X-Dove-Church-Id'] = data.churchId;
       if (data.personId) headers['X-Dove-Person-Id'] = data.personId;
+      if (data.registrationId)
+        headers['X-Dove-Registration-Id'] = data.registrationId;
 
       const response = await this.resend.emails.send({
         from: this.fromAddress,
@@ -110,6 +158,13 @@ export class ResendEmailProvider implements IEmailService {
         );
         throw new Error(response.error.message);
       }
+
+      await this.logEmailSend(response.data?.id, {
+        emailType: 'REGISTRATION_CONFIRMATION',
+        churchId: data.churchId,
+        personId: data.personId,
+        registrationId: data.registrationId,
+      });
 
       this.logger.log(
         `Successfully sent registration confirmation email to ${data.recipientEmail} (Email ID: ${response.data?.id})`,
@@ -135,7 +190,9 @@ export class ResendEmailProvider implements IEmailService {
         }),
       );
 
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = {
+        'X-Dove-Email-Type': 'ADMIN_WELCOME',
+      };
       if (data.churchId) headers['X-Dove-Church-Id'] = data.churchId;
       if (data.userId) headers['X-Dove-User-Id'] = data.userId;
 
@@ -153,6 +210,12 @@ export class ResendEmailProvider implements IEmailService {
         );
         throw new Error(response.error.message);
       }
+
+      await this.logEmailSend(response.data?.id, {
+        emailType: 'ADMIN_WELCOME',
+        churchId: data.churchId,
+        userId: data.userId,
+      });
 
       this.logger.log(
         `Successfully sent admin welcome email to ${data.recipientEmail} (Email ID: ${response.data?.id})`,
@@ -220,10 +283,14 @@ export class ResendEmailProvider implements IEmailService {
         }),
       );
 
-      const headers: Record<string, string> = {};
+      const headers: Record<string, string> = {
+        'X-Dove-Email-Type': 'CUSTOM_BROADCAST',
+      };
       if (data.churchId) headers['X-Dove-Church-Id'] = data.churchId;
       if (data.personId) headers['X-Dove-Person-Id'] = data.personId;
       if (data.userId) headers['X-Dove-User-Id'] = data.userId;
+      if (data.registrationId)
+        headers['X-Dove-Registration-Id'] = data.registrationId;
 
       const response = await this.resend.emails.send({
         from: this.fromAddress,
@@ -240,6 +307,21 @@ export class ResendEmailProvider implements IEmailService {
         );
         throw new Error(response.error.message);
       }
+
+      await this.logEmailSend(response.data?.id, {
+        emailType: 'CUSTOM_BROADCAST',
+        churchId: data.churchId,
+        personId: data.personId,
+        userId: data.userId,
+        registrationId: data.registrationId,
+        broadcastContent: {
+          subject: data.subject,
+          heading: data.heading ?? null,
+          message: data.message,
+          ctaLabel: data.ctaLabel ?? null,
+          ctaUrl: data.ctaUrl ?? null,
+        },
+      });
 
       this.logger.log(
         `Successfully sent custom broadcast email to ${data.recipientEmail} (Email ID: ${response.data?.id})`,
@@ -298,10 +380,14 @@ export class ResendEmailProvider implements IEmailService {
             }),
           );
 
-          const headers: Record<string, string> = {};
+          const headers: Record<string, string> = {
+            'X-Dove-Email-Type': 'CUSTOM_BROADCAST',
+          };
           if (item.churchId) headers['X-Dove-Church-Id'] = item.churchId;
           if (item.personId) headers['X-Dove-Person-Id'] = item.personId;
           if (item.userId) headers['X-Dove-User-Id'] = item.userId;
+          if (item.registrationId)
+            headers['X-Dove-Registration-Id'] = item.registrationId;
 
           return {
             from: this.fromAddress,
@@ -327,20 +413,40 @@ export class ResendEmailProvider implements IEmailService {
             });
           });
         } else if (response.data?.data) {
-          response.data.data.forEach(
-            (result: Record<string, unknown>, idx: number) => {
-              const recipient = chunk[idx].recipientEmail;
-              const resObj = result as { error?: { message?: string } };
-              if (resObj && resObj.error) {
-                totalFailed++;
-                failedRecipients.push({
-                  recipient,
-                  reason: resObj.error.message || 'Error sending to recipient',
-                });
-              } else {
-                totalSent++;
-              }
-            },
+          await Promise.all(
+            response.data.data.map(
+              async (result: Record<string, unknown>, idx: number) => {
+                const item = chunk[idx];
+                const resObj = result as {
+                  id?: string;
+                  error?: { message?: string };
+                };
+                if (resObj && resObj.error) {
+                  totalFailed++;
+                  failedRecipients.push({
+                    recipient: item.recipientEmail,
+                    reason:
+                      resObj.error.message || 'Error sending to recipient',
+                  });
+                } else {
+                  totalSent++;
+                  await this.logEmailSend(resObj.id, {
+                    emailType: 'CUSTOM_BROADCAST',
+                    churchId: item.churchId,
+                    personId: item.personId,
+                    userId: item.userId,
+                    registrationId: item.registrationId,
+                    broadcastContent: {
+                      subject: item.subject,
+                      heading: item.heading ?? null,
+                      message: item.message,
+                      ctaLabel: item.ctaLabel ?? null,
+                      ctaUrl: item.ctaUrl ?? null,
+                    },
+                  });
+                }
+              },
+            ),
           );
         } else {
           totalSent += chunk.length;
