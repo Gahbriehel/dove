@@ -280,6 +280,7 @@ export class ResendEmailProvider implements IEmailService {
           qrCodeDataUrl: qrCodeDataUrlProp,
           teamName: data.teamName,
           teamColor: data.teamColor,
+          imageUrl: data.imageUrl,
         }),
       );
 
@@ -320,6 +321,7 @@ export class ResendEmailProvider implements IEmailService {
           message: data.message,
           ctaLabel: data.ctaLabel ?? null,
           ctaUrl: data.ctaUrl ?? null,
+          imageUrl: data.imageUrl ?? null,
         },
       });
 
@@ -377,6 +379,7 @@ export class ResendEmailProvider implements IEmailService {
               qrCodeDataUrl: item.qrCodeDataUrl,
               teamName: item.teamName,
               teamColor: item.teamColor,
+              imageUrl: item.imageUrl,
             }),
           );
 
@@ -442,6 +445,7 @@ export class ResendEmailProvider implements IEmailService {
                       message: item.message,
                       ctaLabel: item.ctaLabel ?? null,
                       ctaUrl: item.ctaUrl ?? null,
+                      imageUrl: item.imageUrl ?? null,
                     },
                   });
                 }

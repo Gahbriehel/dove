@@ -42,6 +42,7 @@ interface BroadcastContentSnapshot {
   message?: string;
   ctaLabel?: string;
   ctaUrl?: string;
+  imageUrl?: string;
 }
 
 @ApiTags('Email Bounces')
@@ -460,6 +461,7 @@ export class EmailBounceController {
       qrCodeDataUrl,
       teamName,
       teamColor,
+      imageUrl: content.imageUrl,
       churchId: bounce.churchId || undefined,
       registrationId: bounce.registrationId || undefined,
     });

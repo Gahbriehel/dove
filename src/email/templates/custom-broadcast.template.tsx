@@ -31,6 +31,7 @@ export interface CustomBroadcastEmailProps {
   qrCodeDataUrl?: string;
   teamName?: string;
   teamColor?: string;
+  imageUrl?: string;
 }
 
 export const CustomBroadcastEmail = ({
@@ -50,6 +51,7 @@ export const CustomBroadcastEmail = ({
   qrCodeDataUrl,
   teamName,
   teamColor,
+  imageUrl,
 }: CustomBroadcastEmailProps) => {
   const displayHeading = customHeading || subject;
 
@@ -79,6 +81,18 @@ export const CustomBroadcastEmail = ({
             </Text>
             <Heading style={heading}>{displayHeading}</Heading>
           </Section>
+
+          {/* Optional Flyer Image */}
+          {imageUrl && (
+            <Section style={imageSection}>
+              <Img
+                src={imageUrl}
+                alt={displayHeading || 'Flyer'}
+                width="100%"
+                style={flyerImage}
+              />
+            </Section>
+          )}
 
           <Text style={paragraph}>
             Hello <strong>{recipientName}</strong>,
@@ -249,6 +263,19 @@ const heading = {
   color: '#0f172a',
   margin: '0',
   lineHeight: '1.25',
+};
+
+const imageSection = {
+  margin: '0 0 20px 0',
+  textAlign: 'center' as const,
+};
+
+const flyerImage = {
+  maxWidth: '100%',
+  height: 'auto',
+  borderRadius: '8px',
+  display: 'block',
+  margin: '0 auto',
 };
 
 const paragraph = {

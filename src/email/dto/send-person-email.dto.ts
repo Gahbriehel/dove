@@ -58,4 +58,13 @@ export class SendPersonEmailDto {
   @IsUrl()
   @IsOptional()
   ctaUrl?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Flyer or announcement image URL (e.g. uploaded via /uploads/image or external URL)',
+    example: '/public/uploads/flyer.png',
+  })
+  @IsString()
+  @IsOptional()
+  imageUrl?: string;
 }

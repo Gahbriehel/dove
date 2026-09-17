@@ -57,6 +57,8 @@ export class EmailService {
       churchName: person.church?.name || '',
     };
 
+    const resolvedImageUrl = this.resolveImageUrl(dto.imageUrl);
+
     const emailData: CustomEmailData = {
       recipientEmail: person.email,
       recipientName: `${person.firstName} ${person.lastName}`,
@@ -74,6 +76,7 @@ export class EmailService {
       churchName: person.church?.name,
       contactEmail: person.church?.email || undefined,
       contactPhone: person.church?.phone || undefined,
+      imageUrl: resolvedImageUrl,
       churchId,
       personId: person.id,
     };
@@ -128,6 +131,7 @@ export class EmailService {
       );
     }
 
+    const resolvedImageUrl = this.resolveImageUrl(dto.imageUrl);
     const customEmailDataList: CustomEmailData[] = [];
 
     for (const person of people) {
@@ -160,6 +164,7 @@ export class EmailService {
         churchName: person.church?.name,
         contactEmail: person.church?.email || undefined,
         contactPhone: person.church?.phone || undefined,
+        imageUrl: resolvedImageUrl,
         churchId,
         personId: person.id,
       });
@@ -249,6 +254,7 @@ export class EmailService {
       qrCodeDataUrl,
       teamName: registration.team?.name,
       teamColor: registration.team?.color || undefined,
+      imageUrl: this.resolveImageUrl(dto.imageUrl),
       churchId,
       personId: person.id,
       registrationId: registration.id,
@@ -319,6 +325,7 @@ export class EmailService {
       );
     }
 
+    const resolvedImageUrl = this.resolveImageUrl(dto.imageUrl);
     const customEmailDataList: CustomEmailData[] = [];
 
     for (const reg of registrations) {
@@ -381,6 +388,7 @@ export class EmailService {
         qrCodeDataUrl,
         teamName: reg.team?.name,
         teamColor: reg.team?.color || undefined,
+        imageUrl: resolvedImageUrl,
         churchId,
         personId: person.id,
         registrationId: reg.id,
@@ -394,6 +402,20 @@ export class EmailService {
       message: `Batch registrant email processing completed. ${results.totalSent} sent successfully out of ${results.totalWithEmail} valid recipients.`,
       results,
     };
+  }
+
+  private resolveImageUrl(imageUrl?: string): string | undefined {
+    if (!imageUrl || imageUrl.trim() === '') {
+      return undefined;
+    }
+    const trimmed = imageUrl.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+    const appUrl =
+      this.configService.get<string>('appUrl')?.replace(/\/+$/, '') || '';
+    const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    return `${appUrl}${normalizedPath}`;
   }
 
   private replacePlaceholders(

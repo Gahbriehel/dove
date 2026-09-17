@@ -57,6 +57,7 @@ export class ConsoleEmailProvider implements IEmailService {
         `Heading: ${data.heading || 'N/A'}\n` +
         `Message: ${data.message}\n` +
         `CTA: ${data.ctaLabel ? `${data.ctaLabel} (${data.ctaUrl})` : 'N/A'}\n` +
+        `Image URL: ${data.imageUrl || 'N/A'}\n` +
         `Event: ${data.eventTitle || 'N/A'}\n` +
         `Registration #: ${data.registrationNumber || 'N/A'}\n` +
         `------------------------------------------------------------`,
@@ -80,6 +81,7 @@ export class ConsoleEmailProvider implements IEmailService {
         `Total With Valid Email: ${totalWithEmail}\n` +
         `Sample Recipient: ${validData[0] ? `${validData[0].recipientName} <${validData[0].recipientEmail}>` : 'None'}\n` +
         `Subject: ${validData[0]?.subject || 'N/A'}\n` +
+        `Image URL: ${validData[0]?.imageUrl || 'N/A'}\n` +
         `------------------------------------------------------------`,
     );
 

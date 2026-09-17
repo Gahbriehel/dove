@@ -48,6 +48,7 @@ export interface CustomEmailData {
   qrCodeDataUrl?: string;
   teamName?: string;
   teamColor?: string;
+  imageUrl?: string;
   churchId?: string;
   personId?: string;
   userId?: string;
