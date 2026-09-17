@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import { json, urlencoded } from 'express';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { join } from 'path';
 import { AppModule } from './app.module';
@@ -15,6 +16,10 @@ async function bootstrap() {
   app.useLogger(app.get(PinoLogger));
   app.enableShutdownHooks();
   const configService = app.get(ConfigService);
+
+  // Body Parser Limits (for larger payloads and file uploads)
+  app.use(json({ limit: '2mb' }));
+  app.use(urlencoded({ extended: true, limit: '2mb' }));
 
   // Static Assets (uploads)
   app.useStaticAssets(join(process.cwd(), 'public'), {
