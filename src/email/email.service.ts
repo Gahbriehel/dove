@@ -340,7 +340,9 @@ export class EmailService {
         // data: URI images (major email clients strip data: URIs from
         // batch-sent mail), so batch emails link to a hosted QR image
         // instead of embedding one inline.
-        const appUrl = this.configService.get<string>('appUrl');
+        const appUrl = this.configService
+          .get<string>('appUrl')
+          ?.replace(/\/+$/, '');
         qrCodeDataUrl = `${appUrl}/api/v1/qr/${encodeURIComponent(reg.token)}.png`;
       }
 
