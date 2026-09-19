@@ -28,10 +28,10 @@ export class ResendEmailProvider implements IEmailService {
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
-    const apiKey = this.configService.get<string>('RESEND_API_KEY');
+    const apiKey = this.configService.get<string>('resend.apiKey');
     this.resend = new Resend(apiKey);
     this.fromAddress =
-      this.configService.get<string>('EMAIL_FROM') || 'onboarding@resend.dev';
+      this.configService.get<string>('resend.from') || 'onboarding@resend.dev';
   }
 
   /**

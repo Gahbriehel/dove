@@ -44,7 +44,7 @@ export class ResendWebhookController {
     @Headers('svix-signature') svixSignature?: string,
   ) {
     const webhookSecret = this.configService.get<string>(
-      'RESEND_WEBHOOK_SECRET',
+      'resend.webhookSecret',
     );
 
     // If secret is configured, perform signature verification

@@ -26,7 +26,7 @@ import { ResendWebhookController } from './webhooks/resend-webhook.controller';
     {
       provide: EMAIL_SERVICE,
       useFactory: (configService: ConfigService, prisma: PrismaService) => {
-        const apiKey = configService.get<string>('RESEND_API_KEY');
+        const apiKey = configService.get<string>('resend.apiKey');
         if (
           apiKey &&
           apiKey.trim() !== '' &&

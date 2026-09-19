@@ -54,6 +54,18 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   APP_URL: string = 'http://localhost:3000';
+
+  @IsString()
+  @IsOptional()
+  RESEND_API_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  RESEND_WEBHOOK_SECRET?: string;
+
+  @IsString()
+  @IsOptional()
+  EMAIL_FROM?: string;
 }
 
 export function validate(config: Record<string, unknown>) {
