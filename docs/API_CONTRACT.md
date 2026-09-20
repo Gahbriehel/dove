@@ -169,6 +169,33 @@ Super Admin only. Creates a new admin user and automatically dispatches a welcom
 
 ---
 
+# Contact
+
+POST /contact
+POST /churches/:tenantSlug/contact
+
+Public endpoint to submit a contact form for prayer requests or general inquiries.
+
+---
+
+GET /contact/submissions
+
+Admin and Super Admin only. List contact submissions with pagination, search, and filtering.
+
+---
+
+GET /contact/submissions/:id
+
+Admin and Super Admin only. Retrieves single contact submission details.
+
+---
+
+DELETE /contact/submissions/:id
+
+Admin and Super Admin only. Deletes a contact submission.
+
+---
+
 # Phase 2 Upcoming API Extensions (Preview)
 
 - GET /departments & GET /departments/:id

@@ -15,6 +15,7 @@ describe('ContactService', () => {
       findMany: jest.Mock;
       count: jest.Mock;
       findUnique: jest.Mock;
+      delete: jest.Mock;
     };
   };
 
@@ -29,6 +30,7 @@ describe('ContactService', () => {
         findMany: jest.fn(),
         count: jest.fn(),
         findUnique: jest.fn(),
+        delete: jest.fn(),
       },
     };
 
@@ -372,6 +374,125 @@ describe('ContactService', () => {
       const result = await service.findOne('contact-1', user);
 
       expect(result).toEqual(mockSubmission);
+    });
+  });
+
+  describe('remove', () => {
+    it('should delete a contact submission successfully for normal ADMIN', async () => {
+      const mockSubmission = {
+        id: 'contact-1',
+        churchId: 'church-a',
+        type: 'prayer',
+        isPrivate: false,
+      };
+      prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
+      prismaMock.contactSubmission.delete.mockResolvedValue(mockSubmission);
+
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+
+      const result = await service.remove('contact-1', user);
+
+      expect(prismaMock.contactSubmission.findUnique).toHaveBeenCalledWith({
+        where: { id: 'contact-1' },
+      });
+      expect(prismaMock.contactSubmission.delete).toHaveBeenCalledWith({
+        where: { id: 'contact-1' },
+      });
+      expect(result).toEqual({
+        message: 'Contact submission with ID "contact-1" deleted successfully',
+      });
+    });
+
+    it('should throw NotFoundException if submission to delete is not found', async () => {
+      prismaMock.contactSubmission.findUnique.mockResolvedValue(null);
+
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+
+      await expect(service.remove('contact-unknown', user)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prismaMock.contactSubmission.delete).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException for normal ADMIN when submission is private', async () => {
+      const mockSubmission = {
+        id: 'contact-1',
+        churchId: 'church-a',
+        type: 'prayer',
+        isPrivate: true,
+      };
+      prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
+
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+
+      await expect(service.remove('contact-1', user)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prismaMock.contactSubmission.delete).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException for normal ADMIN when churchId does not match', async () => {
+      const mockSubmission = {
+        id: 'contact-1',
+        churchId: 'church-other',
+        type: 'prayer',
+        isPrivate: false,
+      };
+      prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
+
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+
+      await expect(service.remove('contact-1', user)).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prismaMock.contactSubmission.delete).not.toHaveBeenCalled();
+    });
+
+    it('should allow SUPER_ADMIN to delete submissions across any church including private submissions', async () => {
+      const mockSubmission = {
+        id: 'contact-1',
+        churchId: 'church-other',
+        type: 'prayer',
+        isPrivate: true,
+      };
+      prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
+      prismaMock.contactSubmission.delete.mockResolvedValue(mockSubmission);
+
+      const user = {
+        sub: 'u1',
+        email: 'sa@a.com',
+        roles: ['SUPER_ADMIN'],
+        churchId: 'church-a',
+      };
+
+      const result = await service.remove('contact-1', user);
+
+      expect(prismaMock.contactSubmission.delete).toHaveBeenCalledWith({
+        where: { id: 'contact-1' },
+      });
+      expect(result).toEqual({
+        message: 'Contact submission with ID "contact-1" deleted successfully',
+      });
     });
   });
 });

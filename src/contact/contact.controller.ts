@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Headers,
   HttpCode,
@@ -113,5 +114,25 @@ export class ContactController {
   })
   async findOne(@Param('id') id: string, @CurrentUser() user: ActiveUserData) {
     return this.contactService.findOne(id, user);
+  }
+
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Delete('contact/submissions/:id')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Contact submission deleted successfully')
+  @ApiOperation({
+    summary: 'Delete a single contact submission (Admin/Super Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Contact submission deleted successfully',
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Contact submission not found',
+  })
+  async remove(@Param('id') id: string, @CurrentUser() user: ActiveUserData) {
+    return this.contactService.remove(id, user);
   }
 }

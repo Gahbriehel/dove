@@ -8,6 +8,7 @@ describe('ContactController', () => {
     create: jest.Mock;
     findAll: jest.Mock;
     findOne: jest.Mock;
+    remove: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -15,6 +16,7 @@ describe('ContactController', () => {
       create: jest.fn(),
       findAll: jest.fn(),
       findOne: jest.fn(),
+      remove: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -212,6 +214,26 @@ describe('ContactController', () => {
 
       expect(serviceMock.findOne).toHaveBeenCalledWith('contact-1', user);
       expect(result).toBe(mockSubmission);
+    });
+  });
+
+  describe('remove', () => {
+    it('should call ContactService.remove with id and user', async () => {
+      const mockResult = {
+        message: 'Contact submission with ID "contact-1" deleted successfully',
+      };
+      serviceMock.remove.mockResolvedValue(mockResult);
+
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+      const result = await controller.remove('contact-1', user);
+
+      expect(serviceMock.remove).toHaveBeenCalledWith('contact-1', user);
+      expect(result).toBe(mockResult);
     });
   });
 });

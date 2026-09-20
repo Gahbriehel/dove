@@ -179,4 +179,16 @@ export class ContactService {
 
     return submission;
   }
+
+  async remove(id: string, user: ActiveUserData) {
+    await this.findOne(id, user);
+
+    await this.prisma.contactSubmission.delete({
+      where: { id },
+    });
+
+    return {
+      message: `Contact submission with ID "${id}" deleted successfully`,
+    };
+  }
 }
