@@ -90,7 +90,15 @@ export class ContactService {
   }
 
   async findAll(query: QueryContactSubmissionDto, user: ActiveUserData) {
-    const { type, category, search, churchId, page = 1, limit = 10 } = query;
+    const {
+      type,
+      category,
+      search,
+      churchId,
+      isPrivate,
+      page = 1,
+      limit = 10,
+    } = query;
     const skip = (page - 1) * limit;
 
     const isSuperAdmin = user.roles.includes('SUPER_ADMIN');
@@ -101,8 +109,12 @@ export class ContactService {
       if (churchId) {
         where.churchId = churchId;
       }
+      if (isPrivate !== undefined) {
+        where.isPrivate = isPrivate;
+      }
     } else {
       where.churchId = user.churchId;
+      where.isPrivate = false;
     }
 
     if (type) {
@@ -156,7 +168,10 @@ export class ContactService {
       );
     }
 
-    if (!isSuperAdmin && submission.churchId !== user.churchId) {
+    if (
+      !isSuperAdmin &&
+      (submission.churchId !== user.churchId || submission.isPrivate)
+    ) {
       throw new NotFoundException(
         `Contact submission with ID "${id}" not found`,
       );

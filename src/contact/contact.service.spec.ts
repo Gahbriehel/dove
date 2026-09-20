@@ -193,9 +193,15 @@ describe('ContactService', () => {
   });
 
   describe('findAll', () => {
-    it('should return contact submissions filtered for normal ADMIN', async () => {
+    it('should return contact submissions filtered with isPrivate: false for normal ADMIN', async () => {
       const mockSubmissions = [
-        { id: '1', churchId: 'church-a', type: 'prayer', name: 'Jane' },
+        {
+          id: '1',
+          churchId: 'church-a',
+          type: 'prayer',
+          name: 'Jane',
+          isPrivate: false,
+        },
       ];
       prismaMock.contactSubmission.findMany.mockResolvedValue(mockSubmissions);
       prismaMock.contactSubmission.count.mockResolvedValue(1);
@@ -211,7 +217,7 @@ describe('ContactService', () => {
       const result = await service.findAll(query, user);
 
       expect(prismaMock.contactSubmission.findMany).toHaveBeenCalledWith({
-        where: { churchId: 'church-a' },
+        where: { churchId: 'church-a', isPrivate: false },
         orderBy: { createdAt: 'desc' },
         skip: 0,
         take: 10,
@@ -220,7 +226,7 @@ describe('ContactService', () => {
       expect(result.meta.total).toBe(1);
     });
 
-    it('should permit SUPER_ADMIN to query across all churches', async () => {
+    it('should permit SUPER_ADMIN to query across all churches and see all submissions regardless of privacy', async () => {
       prismaMock.contactSubmission.findMany.mockResolvedValue([]);
       prismaMock.contactSubmission.count.mockResolvedValue(0);
 
@@ -263,14 +269,37 @@ describe('ContactService', () => {
         take: 10,
       });
     });
+
+    it('should allow SUPER_ADMIN to filter specifically by isPrivate', async () => {
+      prismaMock.contactSubmission.findMany.mockResolvedValue([]);
+      prismaMock.contactSubmission.count.mockResolvedValue(0);
+
+      const query = { page: 1, limit: 10, isPrivate: true };
+      const user = {
+        sub: 'u1',
+        email: 'sa@a.com',
+        roles: ['SUPER_ADMIN'],
+        churchId: 'church-a',
+      };
+
+      await service.findAll(query, user);
+
+      expect(prismaMock.contactSubmission.findMany).toHaveBeenCalledWith({
+        where: { isPrivate: true },
+        orderBy: { createdAt: 'desc' },
+        skip: 0,
+        take: 10,
+      });
+    });
   });
 
   describe('findOne', () => {
-    it('should return contact submission if churchId matches normal ADMIN', async () => {
+    it('should return contact submission if churchId matches and isPrivate is false for normal ADMIN', async () => {
       const mockSubmission = {
         id: 'contact-1',
         churchId: 'church-a',
         type: 'prayer',
+        isPrivate: false,
       };
       prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
 
@@ -285,11 +314,12 @@ describe('ContactService', () => {
       expect(result).toEqual(mockSubmission);
     });
 
-    it('should throw NotFoundException if churchId does not match normal ADMIN', async () => {
+    it('should throw NotFoundException if isPrivate is true for normal ADMIN', async () => {
       const mockSubmission = {
         id: 'contact-1',
-        churchId: 'church-other',
+        churchId: 'church-a',
         type: 'prayer',
+        isPrivate: true,
       };
       prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
 
@@ -304,11 +334,32 @@ describe('ContactService', () => {
       );
     });
 
-    it('should return contact submission for SUPER_ADMIN regardless of churchId', async () => {
+    it('should throw NotFoundException if churchId does not match normal ADMIN', async () => {
       const mockSubmission = {
         id: 'contact-1',
         churchId: 'church-other',
         type: 'prayer',
+        isPrivate: false,
+      };
+      prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
+
+      const user = {
+        sub: 'u1',
+        email: 'a@a.com',
+        roles: ['ADMIN'],
+        churchId: 'church-a',
+      };
+      await expect(service.findOne('contact-1', user)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should return contact submission for SUPER_ADMIN regardless of churchId and even if isPrivate is true', async () => {
+      const mockSubmission = {
+        id: 'contact-1',
+        churchId: 'church-other',
+        type: 'prayer',
+        isPrivate: true,
       };
       prismaMock.contactSubmission.findUnique.mockResolvedValue(mockSubmission);
 

@@ -1,6 +1,7 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -8,6 +9,12 @@ import {
   IsUUID,
   Min,
 } from 'class-validator';
+
+const toBoolean = ({ value }: { value: unknown }): boolean | undefined => {
+  if (value === 'true' || value === true) return true;
+  if (value === 'false' || value === false) return false;
+  return undefined;
+};
 
 export class QueryContactSubmissionDto {
   @ApiPropertyOptional({
@@ -38,6 +45,14 @@ export class QueryContactSubmissionDto {
   @IsUUID()
   @IsOptional()
   churchId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by privacy status (Super Admin only)',
+  })
+  @Transform(toBoolean)
+  @IsBoolean()
+  @IsOptional()
+  isPrivate?: boolean;
 
   @ApiPropertyOptional({ default: 1, description: 'Page number' })
   @Type(() => Number)
