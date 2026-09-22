@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -16,8 +17,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
 import { CreateGameDto } from './dto/create-game.dto';
 import { QueryGameDto } from './dto/query-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
@@ -52,6 +55,27 @@ export class GamesController {
   })
   async findAll(@Query() query: QueryGameDto) {
     return this.gamesService.findAll(query);
+  }
+
+  @Get('export')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Export games as CSV' })
+  @ApiResponse({ status: 200, description: 'CSV file of games' })
+  async exportCsv(
+    @Query() query: QueryGameDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const games = await this.gamesService.exportAll(query);
+    const csv = buildCsv(games, [
+      { header: 'ID', value: (r) => r.id },
+      { header: 'Name', value: (r) => r.name },
+      { header: 'Description', value: (r) => r.description },
+      { header: 'Max Score', value: (r) => r.maxScore },
+      { header: 'Event', value: (r) => r.event.title },
+      { header: 'Scores Recorded', value: (r) => r._count.scores },
+      { header: 'Created At', value: (r) => r.createdAt },
+    ]);
+    sendCsv(res, csvFilename('games'), csv);
   }
 
   @Get(':id')

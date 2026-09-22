@@ -10,8 +10,10 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
 import { Request } from 'express';
+import type { Response } from 'express';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -25,6 +27,7 @@ import {
   type ActiveUserData,
 } from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
+import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
 import { ContactService } from './contact.service';
 import { CreateContactSubmissionDto } from './dto/create-contact-submission.dto';
 import { QueryContactSubmissionDto } from './dto/query-contact-submission.dto';
@@ -93,6 +96,35 @@ export class ContactController {
     @CurrentUser() user: ActiveUserData,
   ) {
     return this.contactService.findAll(query, user);
+  }
+
+  @ApiBearerAuth()
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @Get('contact/submissions/export')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Export contact submissions as CSV (Admin/Super Admin only)',
+  })
+  @ApiResponse({ status: 200, description: 'CSV file of contact submissions' })
+  async exportCsv(
+    @Query() query: QueryContactSubmissionDto,
+    @CurrentUser() user: ActiveUserData,
+    @Res() res: Response,
+  ): Promise<void> {
+    const submissions = await this.contactService.exportAll(query, user);
+    const csv = buildCsv(submissions, [
+      { header: 'ID', value: (r) => r.id },
+      { header: 'Type', value: (r) => r.type },
+      { header: 'Category', value: (r) => r.category },
+      { header: 'Name', value: (r) => r.name },
+      { header: 'Email', value: (r) => r.email },
+      { header: 'Phone', value: (r) => r.phone },
+      { header: 'Message', value: (r) => r.message },
+      { header: 'Private', value: (r) => r.isPrivate },
+      { header: 'Church ID', value: (r) => r.churchId },
+      { header: 'Submitted At', value: (r) => r.createdAt },
+    ]);
+    sendCsv(res, csvFilename('contact-submissions'), csv);
   }
 
   @ApiBearerAuth()

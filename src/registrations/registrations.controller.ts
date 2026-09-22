@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -15,10 +16,12 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
 import { QueryRegistrationDto } from './dto/query-registration.dto';
 import { RegisterDto } from './dto/register.dto';
 import { RegistrationsService } from './registrations.service';
@@ -74,6 +77,37 @@ export class RegistrationsController {
     @CurrentUser('churchId') churchId: string,
   ) {
     return this.registrationsService.findAll(query, churchId);
+  }
+
+  @Get('registrations/export')
+  @Roles('ADMIN', 'SUPER_ADMIN', 'COORDINATOR', 'REGISTRATION_DESK')
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Export registrations as CSV (Admin only)' })
+  @ApiResponse({ status: 200, description: 'CSV file of registrations' })
+  async exportCsv(
+    @Query() query: QueryRegistrationDto,
+    @CurrentUser('churchId') churchId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const registrations = await this.registrationsService.exportAll(
+      query,
+      churchId,
+    );
+    const csv = buildCsv(registrations, [
+      { header: 'ID', value: (r) => r.id },
+      { header: 'Registration Number', value: (r) => r.registrationNumber },
+      { header: 'Event', value: (r) => r.event.title },
+      { header: 'First Name', value: (r) => r.person.firstName },
+      { header: 'Last Name', value: (r) => r.person.lastName },
+      { header: 'Email', value: (r) => r.person.email },
+      { header: 'Phone', value: (r) => r.person.phone },
+      { header: 'Team', value: (r) => r.team?.name },
+      { header: 'Status', value: (r) => r.status },
+      { header: 'Checked In At', value: (r) => r.attendance?.checkedInAt },
+      { header: 'Registered At', value: (r) => r.createdAt },
+    ]);
+    sendCsv(res, csvFilename('registrations'), csv);
   }
 
   @Get('registrations/:id')

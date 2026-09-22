@@ -10,6 +10,7 @@ import {
   Param,
   Patch,
   Post,
+  Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -21,10 +22,17 @@ import {
 import type { EmailBounce } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import type { Response } from 'express';
 import * as QRCode from 'qrcode';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../../common/decorators/response-message.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import {
+  buildCsv,
+  csvFilename,
+  CSV_EXPORT_MAX_ROWS,
+  sendCsv,
+} from '../../common/utils/csv.util';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RemediateEmailBounceDto } from '../dto/remediate-email-bounce.dto';
 import {
@@ -70,6 +78,33 @@ export class EmailBounceController {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  @Get('export')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Export email bounce alerts as CSV' })
+  @ApiResponse({ status: 200, description: 'CSV file of email bounce alerts' })
+  async exportCsv(
+    @CurrentUser('churchId') churchId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const bounces = await this.prisma.emailBounce.findMany({
+      where: { churchId },
+      take: CSV_EXPORT_MAX_ROWS,
+      orderBy: { createdAt: 'desc' },
+    });
+    const csv = buildCsv(bounces, [
+      { header: 'ID', value: (r) => r.id },
+      { header: 'Email', value: (r) => r.email },
+      { header: 'Recipient Type', value: (r) => r.recipientType },
+      { header: 'Email Type', value: (r) => r.emailType },
+      { header: 'Bounce Reason', value: (r) => r.reason },
+      { header: 'Resolved', value: (r) => r.isResolved },
+      { header: 'Resolved At', value: (r) => r.resolvedAt },
+      { header: 'Created At', value: (r) => r.createdAt },
+    ]);
+    sendCsv(res, csvFilename('email-bounces'), csv);
   }
 
   @Patch(':id/resolve')

@@ -8,6 +8,7 @@ import {
 import { Prisma } from '@prisma/client';
 import type { ActiveUserData } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
+import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -66,11 +67,11 @@ export class UsersService {
     });
   }
 
-  async findAll(query: QueryUserDto, userChurchId?: string) {
-    const { search, isActive, page = 1, limit = 10 } = query;
-    const skip = (page - 1) * limit;
-
-    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+  private buildWhere(
+    query: QueryUserDto,
+    churchId: string,
+  ): Prisma.UserWhereInput {
+    const { search, isActive } = query;
 
     const where: Prisma.UserWhereInput = { churchId };
 
@@ -85,6 +86,17 @@ export class UsersService {
         { email: { contains: search } },
       ];
     }
+
+    return where;
+  }
+
+  async findAll(query: QueryUserDto, userChurchId?: string) {
+    const { page = 1, limit = 10 } = query;
+    const skip = (page - 1) * limit;
+
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const where = this.buildWhere(query, churchId);
 
     const [items, total] = await Promise.all([
       this.prisma.user.findMany({
@@ -106,6 +118,19 @@ export class UsersService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async exportAll(query: QueryUserDto, userChurchId?: string) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const where = this.buildWhere(query, churchId);
+
+    return this.prisma.user.findMany({
+      where,
+      take: CSV_EXPORT_MAX_ROWS,
+      orderBy: { createdAt: 'desc' },
+      select: USER_SELECT,
+    });
   }
 
   async findOne(id: string, userChurchId?: string) {

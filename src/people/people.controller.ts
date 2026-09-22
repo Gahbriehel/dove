@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -16,8 +17,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
+import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { QueryPersonDto } from './dto/query-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
@@ -55,6 +58,34 @@ export class PeopleController {
     @CurrentUser('churchId') userChurchId: string,
   ) {
     return this.peopleService.findAll(query, userChurchId);
+  }
+
+  @Get('export')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Export people as CSV' })
+  @ApiResponse({ status: 200, description: 'CSV file of people' })
+  async exportCsv(
+    @Query() query: QueryPersonDto,
+    @CurrentUser('churchId') userChurchId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const people = await this.peopleService.exportAll(query, userChurchId);
+    const csv = buildCsv(people, [
+      { header: 'ID', value: (r) => r.id },
+      { header: 'First Name', value: (r) => r.firstName },
+      { header: 'Last Name', value: (r) => r.lastName },
+      { header: 'Email', value: (r) => r.email },
+      { header: 'Phone', value: (r) => r.phone },
+      { header: 'Gender', value: (r) => r.gender },
+      { header: 'Membership Status', value: (r) => r.membershipStatus },
+      { header: 'Date of Birth', value: (r) => r.dateOfBirth },
+      { header: 'Address', value: (r) => r.address },
+      { header: 'Events Registered', value: (r) => r.eventsRegisteredCount },
+      { header: 'Events Attended', value: (r) => r.eventsAttendedCount },
+      { header: 'Church ID', value: (r) => r.churchId },
+      { header: 'Created At', value: (r) => r.createdAt },
+    ]);
+    sendCsv(res, csvFilename('people'), csv);
   }
 
   @Get(':id')

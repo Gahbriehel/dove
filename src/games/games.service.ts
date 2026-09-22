@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
 import { CreateGameDto } from './dto/create-game.dto';
 import { UpdateGameDto } from './dto/update-game.dto';
 import { QueryGameDto } from './dto/query-game.dto';
@@ -47,9 +48,8 @@ export class GamesService {
     });
   }
 
-  async findAll(query: QueryGameDto) {
-    const { eventId, search, page = 1, limit = 10 } = query;
-    const skip = (page - 1) * limit;
+  private buildWhere(query: QueryGameDto): Prisma.GameWhereInput {
+    const { eventId, search } = query;
 
     const where: Prisma.GameWhereInput = {};
 
@@ -63,6 +63,15 @@ export class GamesService {
         { description: { contains: search } },
       ];
     }
+
+    return where;
+  }
+
+  async findAll(query: QueryGameDto) {
+    const { page = 1, limit = 10 } = query;
+    const skip = (page - 1) * limit;
+
+    const where = this.buildWhere(query);
 
     const [items, total] = await Promise.all([
       this.prisma.game.findMany({
@@ -84,6 +93,20 @@ export class GamesService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async exportAll(query: QueryGameDto) {
+    const where = this.buildWhere(query);
+
+    return this.prisma.game.findMany({
+      where,
+      take: CSV_EXPORT_MAX_ROWS,
+      orderBy: { name: 'asc' },
+      include: {
+        event: { select: { id: true, title: true } },
+        _count: { select: { scores: true } },
+      },
+    });
   }
 
   async findOne(id: string) {

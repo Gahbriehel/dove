@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Gender, MembershipStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
 import { QueryPersonDto } from './dto/query-person.dto';
@@ -31,19 +32,11 @@ export class PeopleService {
     });
   }
 
-  async findAll(query: QueryPersonDto, userChurchId?: string) {
-    const {
-      churchId: queryChurchId,
-      membershipStatus,
-      gender,
-      search,
-      page = 1,
-      limit = 10,
-    } = query;
-    const skip = (page - 1) * limit;
-
-    const targetChurchId =
-      queryChurchId || userChurchId || (await this.prisma.getDefaultChurchId());
+  private buildWhere(
+    query: QueryPersonDto,
+    targetChurchId: string,
+  ): Prisma.PersonWhereInput {
+    const { membershipStatus, gender, search } = query;
 
     const where: Prisma.PersonWhereInput = {
       churchId: targetChurchId,
@@ -65,6 +58,18 @@ export class PeopleService {
         { phone: { contains: search } },
       ];
     }
+
+    return where;
+  }
+
+  async findAll(query: QueryPersonDto, userChurchId?: string) {
+    const { churchId: queryChurchId, page = 1, limit = 10 } = query;
+    const skip = (page - 1) * limit;
+
+    const targetChurchId =
+      queryChurchId || userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const where = this.buildWhere(query, targetChurchId);
 
     const [
       items,
@@ -188,6 +193,34 @@ export class PeopleService {
         },
       },
     };
+  }
+
+  async exportAll(query: QueryPersonDto, userChurchId?: string) {
+    const targetChurchId =
+      query.churchId ||
+      userChurchId ||
+      (await this.prisma.getDefaultChurchId());
+
+    const where = this.buildWhere(query, targetChurchId);
+
+    const people = await this.prisma.person.findMany({
+      where,
+      take: CSV_EXPORT_MAX_ROWS,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        registrations: {
+          select: { attendance: { select: { id: true } } },
+        },
+      },
+    });
+
+    return people.map((person) => ({
+      ...person,
+      eventsRegisteredCount: person.registrations.length,
+      eventsAttendedCount: person.registrations.filter(
+        (reg) => reg.attendance !== null,
+      ).length,
+    }));
   }
 
   async findOne(id: string, userChurchId?: string) {

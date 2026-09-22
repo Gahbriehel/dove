@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateContactSubmissionDto } from './dto/create-contact-submission.dto';
 import { QueryContactSubmissionDto } from './dto/query-contact-submission.dto';
 import { ActiveUserData } from '../common/decorators/current-user.decorator';
+import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
 import * as crypto from 'crypto';
 
 @Injectable()
@@ -89,17 +90,11 @@ export class ContactService {
     });
   }
 
-  async findAll(query: QueryContactSubmissionDto, user: ActiveUserData) {
-    const {
-      type,
-      category,
-      search,
-      churchId,
-      isPrivate,
-      page = 1,
-      limit = 10,
-    } = query;
-    const skip = (page - 1) * limit;
+  private buildWhere(
+    query: QueryContactSubmissionDto,
+    user: ActiveUserData,
+  ): Prisma.ContactSubmissionWhereInput {
+    const { type, category, search, churchId, isPrivate } = query;
 
     const isSuperAdmin = user.roles.includes('SUPER_ADMIN');
 
@@ -134,6 +129,15 @@ export class ContactService {
       ];
     }
 
+    return where;
+  }
+
+  async findAll(query: QueryContactSubmissionDto, user: ActiveUserData) {
+    const { page = 1, limit = 10 } = query;
+    const skip = (page - 1) * limit;
+
+    const where = this.buildWhere(query, user);
+
     const [items, total] = await Promise.all([
       this.prisma.contactSubmission.findMany({
         where,
@@ -153,6 +157,16 @@ export class ContactService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async exportAll(query: QueryContactSubmissionDto, user: ActiveUserData) {
+    const where = this.buildWhere(query, user);
+
+    return this.prisma.contactSubmission.findMany({
+      where,
+      take: CSV_EXPORT_MAX_ROWS,
+      orderBy: { createdAt: 'desc' },
+    });
   }
 
   async findOne(id: string, user: ActiveUserData) {

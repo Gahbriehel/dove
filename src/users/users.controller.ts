@@ -12,6 +12,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -19,6 +20,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import * as bcrypt from 'bcryptjs';
 import { ConfigService } from '@nestjs/config';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
@@ -27,6 +29,7 @@ import {
   type ActiveUserData,
 } from '../common/decorators/current-user.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
 import type { IEmailService } from '../email/interfaces/email-service.interface';
 import { PrismaService } from '../prisma/prisma.service';
@@ -117,6 +120,35 @@ export class UsersController {
     @CurrentUser('churchId') userChurchId: string,
   ) {
     return this.usersService.findAll(query, userChurchId);
+  }
+
+  @Get('export')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Export users as CSV (Super Admin only)' })
+  @ApiResponse({ status: 200, description: 'CSV file of users' })
+  async exportCsv(
+    @Query() query: QueryUserDto,
+    @CurrentUser('churchId') userChurchId: string,
+    @Res() res: Response,
+  ): Promise<void> {
+    const users = await this.usersService.exportAll(query, userChurchId);
+    const csv = buildCsv(users, [
+      { header: 'ID', value: (r) => r.id },
+      { header: 'Email', value: (r) => r.email },
+      { header: 'First Name', value: (r) => r.firstName },
+      { header: 'Last Name', value: (r) => r.lastName },
+      { header: 'Phone', value: (r) => r.phone },
+      {
+        header: 'Roles',
+        value: (r) => r.userRoles.map((ur) => ur.role.name).join('; '),
+      },
+      { header: 'Active', value: (r) => r.isActive },
+      { header: 'Email Status', value: (r) => r.emailStatus },
+      { header: 'Last Active', value: (r) => r.lastActive },
+      { header: 'Church ID', value: (r) => r.churchId },
+      { header: 'Created At', value: (r) => r.createdAt },
+    ]);
+    sendCsv(res, csvFilename('users'), csv);
   }
 
   @Get(':id')

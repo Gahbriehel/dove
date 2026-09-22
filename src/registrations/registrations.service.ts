@@ -17,6 +17,7 @@ import {
   generateIcsBuffer,
 } from '../email/utils/calendar.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
 import { QueryRegistrationDto } from './dto/query-registration.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -320,11 +321,11 @@ export class RegistrationsService {
     };
   }
 
-  async findAll(query: QueryRegistrationDto, userChurchId?: string) {
-    const { eventId, teamId, status, search, page = 1, limit = 10 } = query;
-    const skip = (page - 1) * limit;
-
-    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+  private buildWhere(
+    query: QueryRegistrationDto,
+    churchId: string,
+  ): Prisma.RegistrationWhereInput {
+    const { eventId, teamId, status, search } = query;
 
     const where: Prisma.RegistrationWhereInput = {
       event: {
@@ -353,6 +354,17 @@ export class RegistrationsService {
         { person: { phone: { contains: search } } },
       ];
     }
+
+    return where;
+  }
+
+  async findAll(query: QueryRegistrationDto, userChurchId?: string) {
+    const { page = 1, limit = 10 } = query;
+    const skip = (page - 1) * limit;
+
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const where = this.buildWhere(query, churchId);
 
     const [items, total] = await Promise.all([
       this.prisma.registration.findMany({
@@ -392,6 +404,32 @@ export class RegistrationsService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async exportAll(query: QueryRegistrationDto, userChurchId?: string) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const where = this.buildWhere(query, churchId);
+
+    return this.prisma.registration.findMany({
+      where,
+      take: CSV_EXPORT_MAX_ROWS,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        event: { select: { id: true, title: true } },
+        person: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+          },
+        },
+        team: { select: { id: true, name: true } },
+        attendance: { select: { checkedInAt: true } },
+      },
+    });
   }
 
   async findOne(id: string, userChurchId?: string) {

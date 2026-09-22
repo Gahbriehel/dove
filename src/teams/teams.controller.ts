@@ -9,6 +9,7 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -16,8 +17,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import type { Response } from 'express';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
+import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { QueryTeamDto } from './dto/query-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
@@ -52,6 +55,27 @@ export class TeamsController {
   })
   async findAll(@Query() query: QueryTeamDto) {
     return this.teamsService.findAll(query);
+  }
+
+  @Get('export')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Export teams as CSV' })
+  @ApiResponse({ status: 200, description: 'CSV file of teams' })
+  async exportCsv(
+    @Query() query: QueryTeamDto,
+    @Res() res: Response,
+  ): Promise<void> {
+    const teams = await this.teamsService.exportAll(query);
+    const csv = buildCsv(teams, [
+      { header: 'ID', value: (r) => r.id },
+      { header: 'Name', value: (r) => r.name },
+      { header: 'Color', value: (r) => r.color },
+      { header: 'Event', value: (r) => r.event.title },
+      { header: 'Members', value: (r) => r._count.registrations },
+      { header: 'Scores Recorded', value: (r) => r._count.scores },
+      { header: 'Created At', value: (r) => r.createdAt },
+    ]);
+    sendCsv(res, csvFilename('teams'), csv);
   }
 
   @Get(':id')

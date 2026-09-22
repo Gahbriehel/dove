@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
 import { CreateTeamDto } from './dto/create-team.dto';
 import { UpdateTeamDto } from './dto/update-team.dto';
 import { QueryTeamDto } from './dto/query-team.dto';
@@ -28,9 +29,8 @@ export class TeamsService {
     });
   }
 
-  async findAll(query: QueryTeamDto) {
-    const { eventId, search, page = 1, limit = 10 } = query;
-    const skip = (page - 1) * limit;
+  private buildWhere(query: QueryTeamDto): Prisma.TeamWhereInput {
+    const { eventId, search } = query;
 
     const where: Prisma.TeamWhereInput = {};
 
@@ -41,6 +41,15 @@ export class TeamsService {
     if (search) {
       where.name = { contains: search };
     }
+
+    return where;
+  }
+
+  async findAll(query: QueryTeamDto) {
+    const { page = 1, limit = 10 } = query;
+    const skip = (page - 1) * limit;
+
+    const where = this.buildWhere(query);
 
     const [items, total] = await Promise.all([
       this.prisma.team.findMany({
@@ -69,6 +78,20 @@ export class TeamsService {
         totalPages: Math.ceil(total / limit),
       },
     };
+  }
+
+  async exportAll(query: QueryTeamDto) {
+    const where = this.buildWhere(query);
+
+    return this.prisma.team.findMany({
+      where,
+      take: CSV_EXPORT_MAX_ROWS,
+      orderBy: { name: 'asc' },
+      include: {
+        event: { select: { id: true, title: true } },
+        _count: { select: { registrations: true, scores: true } },
+      },
+    });
   }
 
   async findOne(id: string) {
