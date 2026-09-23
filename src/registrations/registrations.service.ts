@@ -7,7 +7,12 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { MembershipStatus, Prisma, RegistrationStatus } from '@prisma/client';
+import {
+  EventStatus,
+  MembershipStatus,
+  Prisma,
+  RegistrationStatus,
+} from '@prisma/client';
 import * as crypto from 'crypto';
 import * as QRCode from 'qrcode';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
@@ -54,6 +59,12 @@ export class RegistrationsService {
 
     if (!event) {
       throw new NotFoundException(`Event with ID "${eventId}" not found`);
+    }
+
+    if (event.status !== EventStatus.PUBLISHED) {
+      throw new BadRequestException(
+        'Registration is only allowed for published events',
+      );
     }
 
     if (event.endDate && event.endDate < new Date()) {

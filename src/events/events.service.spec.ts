@@ -1,6 +1,6 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { RegistrationStatus } from '@prisma/client';
+import { EventStatus, RegistrationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 
@@ -123,6 +123,22 @@ describe('EventsService', () => {
       });
       expect(result.items[0]).not.toHaveProperty('_count');
     });
+
+    it('should enforce PUBLISHED status for unauthenticated public callers', async () => {
+      prismaMock.event.findMany.mockResolvedValue([]);
+      prismaMock.event.count.mockResolvedValue(0);
+
+      await service.findAll({});
+
+      expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            churchId: 'church-1',
+            status: EventStatus.PUBLISHED,
+          },
+        }),
+      );
+    });
   });
 
   describe('findOne', () => {
@@ -130,6 +146,7 @@ describe('EventsService', () => {
       prismaMock.event.findFirst.mockResolvedValue({
         id: 'event-1',
         title: 'Leadership Summit',
+        status: EventStatus.PUBLISHED,
         church: { id: 'church-1', name: 'Grace Church', slug: 'grace' },
         teams: [{ id: 'team-1' }],
         games: [{ id: 'game-1' }],
@@ -146,6 +163,22 @@ describe('EventsService', () => {
       expect(result.checkedInCount).toEqual(1);
       expect(result.registeredCount).toEqual(1);
       expect(result).not.toHaveProperty('_count');
+    });
+
+    it('should throw NotFoundException if public caller requests a DRAFT event', async () => {
+      prismaMock.event.findFirst.mockResolvedValue({
+        id: 'event-draft',
+        title: 'Draft Summit',
+        status: EventStatus.DRAFT,
+        church: { id: 'church-1', name: 'Grace Church', slug: 'grace' },
+        teams: [],
+        games: [],
+        registrations: [],
+      });
+
+      await expect(service.findOne('event-draft')).rejects.toThrow(
+        NotFoundException,
+      );
     });
   });
 

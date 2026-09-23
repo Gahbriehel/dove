@@ -3,7 +3,8 @@ import {
   NotFoundException,
   BadRequestException,
 } from '@nestjs/common';
-import { Prisma, RegistrationStatus } from '@prisma/client';
+import { EventStatus, Prisma, RegistrationStatus } from '@prisma/client';
+import { type ActiveUserData } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -45,7 +46,15 @@ export class EventsService {
     });
   }
 
-  async findAll(query: QueryEventDto, userChurchId?: string) {
+  async findAll(
+    query: QueryEventDto,
+    userOrChurchId?: ActiveUserData | string,
+  ) {
+    const user =
+      typeof userOrChurchId === 'object' ? userOrChurchId : undefined;
+    const userChurchId =
+      typeof userOrChurchId === 'string' ? userOrChurchId : user?.churchId;
+
     const {
       churchId: queryChurchId,
       status,
@@ -62,7 +71,15 @@ export class EventsService {
       churchId: targetChurchId,
     };
 
-    if (status) {
+    const hasAdminRole =
+      typeof userOrChurchId === 'string' ||
+      user?.roles?.some((role) =>
+        ['SUPER_ADMIN', 'ADMIN', 'COORDINATOR'].includes(role),
+      );
+
+    if (!hasAdminRole) {
+      where.status = EventStatus.PUBLISHED;
+    } else if (status) {
       where.status = status;
     }
 
@@ -125,7 +142,12 @@ export class EventsService {
     };
   }
 
-  async findOne(id: string, userChurchId?: string) {
+  async findOne(id: string, userOrChurchId?: ActiveUserData | string) {
+    const user =
+      typeof userOrChurchId === 'object' ? userOrChurchId : undefined;
+    const userChurchId =
+      typeof userOrChurchId === 'string' ? userOrChurchId : user?.churchId;
+
     const targetChurchId =
       userChurchId || (await this.prisma.getDefaultChurchId());
 
@@ -147,6 +169,16 @@ export class EventsService {
     });
 
     if (!event) {
+      throw new NotFoundException(`Event with ID "${id}" not found`);
+    }
+
+    const hasAdminRole =
+      typeof userOrChurchId === 'string' ||
+      user?.roles?.some((role) =>
+        ['SUPER_ADMIN', 'ADMIN', 'COORDINATOR'].includes(role),
+      );
+
+    if (!hasAdminRole && event.status !== EventStatus.PUBLISHED) {
       throw new NotFoundException(`Event with ID "${id}" not found`);
     }
 

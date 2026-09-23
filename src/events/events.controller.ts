@@ -16,7 +16,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type ActiveUserData,
+} from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -56,9 +59,9 @@ export class EventsController {
   })
   async findAll(
     @Query() query: QueryEventDto,
-    @CurrentUser('churchId') userChurchId?: string,
+    @CurrentUser() user?: ActiveUserData,
   ) {
-    return this.eventsService.findAll(query, userChurchId);
+    return this.eventsService.findAll(query, user);
   }
 
   @Public()
@@ -67,11 +70,8 @@ export class EventsController {
   @ApiOperation({ summary: 'Get a single event by ID' })
   @ApiResponse({ status: 200, description: 'Event retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Event not found' })
-  async findOne(
-    @Param('id') id: string,
-    @CurrentUser('churchId') userChurchId?: string,
-  ) {
-    return this.eventsService.findOne(id, userChurchId);
+  async findOne(@Param('id') id: string, @CurrentUser() user?: ActiveUserData) {
+    return this.eventsService.findOne(id, user);
   }
 
   @Patch(':id')

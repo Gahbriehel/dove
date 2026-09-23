@@ -1,6 +1,6 @@
 import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { RegistrationStatus } from '@prisma/client';
+import { EventStatus, RegistrationStatus } from '@prisma/client';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegistrationsService } from './registrations.service';
@@ -65,6 +65,7 @@ describe('RegistrationsService', () => {
       startDate: futureDate,
       endDate: futureDate,
       capacity: 5,
+      status: EventStatus.PUBLISHED,
       church: {
         name: 'Grace Church',
         email: 'info@grace.org',
@@ -166,6 +167,21 @@ describe('RegistrationsService', () => {
 
       expect(result.message).toEqual('Registration successful');
       expect(txMock.registration.count).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException if event is not PUBLISHED', async () => {
+      prismaMock.event.findUnique.mockResolvedValue({
+        ...mockEvent,
+        status: EventStatus.DRAFT,
+      });
+
+      await expect(
+        service.register('event-1', {
+          firstName: 'John',
+          lastName: 'Doe',
+          email: 'test@example.com',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 });
