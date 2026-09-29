@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  EventCategory,
   EventStatus,
   MembershipStatus,
   RegistrationStatus,
@@ -180,6 +181,21 @@ export class UpcomingEventDto {
 
   @ApiProperty({ enum: EventStatus, example: EventStatus.PUBLISHED })
   status: EventStatus;
+
+  @ApiProperty({ enum: EventCategory, example: EventCategory.GENERAL })
+  category: EventCategory;
+
+  @ApiProperty({
+    description: 'Whether registration is required for the event',
+    example: true,
+  })
+  requiresRegistration: boolean;
+
+  @ApiProperty({
+    description: 'Whether the event is featured on the homepage banner',
+    example: false,
+  })
+  isFeatured: boolean;
 
   @ApiProperty({
     description: 'Total registrations count for this event',

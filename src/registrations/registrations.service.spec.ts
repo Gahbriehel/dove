@@ -65,6 +65,7 @@ describe('RegistrationsService', () => {
       startDate: futureDate,
       endDate: futureDate,
       capacity: 5,
+      requiresRegistration: true,
       status: EventStatus.PUBLISHED,
       church: {
         name: 'Grace Church',
@@ -167,6 +168,21 @@ describe('RegistrationsService', () => {
 
       expect(result.message).toEqual('Registration successful');
       expect(txMock.registration.count).not.toHaveBeenCalled();
+    });
+
+    it('should throw BadRequestException if event does not require registration', async () => {
+      prismaMock.event.findUnique.mockResolvedValue({
+        ...mockEvent,
+        requiresRegistration: false,
+      });
+
+      await expect(
+        service.register('event-1', {
+          firstName: 'John',
+          lastName: 'Doe',
+          email: 'test@example.com',
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
 
     it('should throw BadRequestException if event is not PUBLISHED', async () => {

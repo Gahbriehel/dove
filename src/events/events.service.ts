@@ -58,6 +58,9 @@ export class EventsService {
     const {
       churchId: queryChurchId,
       status,
+      category,
+      requiresRegistration,
+      isFeatured,
       search,
       page = 1,
       limit = 10,
@@ -81,6 +84,18 @@ export class EventsService {
       where.status = EventStatus.PUBLISHED;
     } else if (status) {
       where.status = status;
+    }
+
+    if (category) {
+      where.category = category;
+    }
+
+    if (requiresRegistration !== undefined) {
+      where.requiresRegistration = requiresRegistration;
+    }
+
+    if (isFeatured !== undefined) {
+      where.isFeatured = isFeatured;
     }
 
     if (search) {

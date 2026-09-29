@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { EventStatus } from '@prisma/client';
+import { EventCategory, EventStatus } from '@prisma/client';
 import {
+  IsArray,
   IsBoolean,
   IsDateString,
   IsEnum,
@@ -34,6 +35,15 @@ export class CreateEventDto {
   description?: string;
 
   @ApiPropertyOptional({
+    enum: EventCategory,
+    default: EventCategory.GENERAL,
+    description: 'Ministry category for the event',
+  })
+  @IsEnum(EventCategory)
+  @IsOptional()
+  category?: EventCategory;
+
+  @ApiPropertyOptional({
     description: 'Event flyer image URL (e.g. uploaded via /uploads/image)',
   })
   @IsString()
@@ -59,13 +69,46 @@ export class CreateEventDto {
 
   @ApiPropertyOptional({
     description:
-      'Maximum registration capacity for the event (optional, omitted or null for unlimited capacity)',
+      'Maximum registration capacity for the event (optional, omitted or null for unlimited capacity / non-registration events)',
     example: 100,
   })
   @IsInt()
   @Min(1)
   @IsOptional()
   capacity?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Whether online registration and ticket generation are required. If false, admission is free and walk-in friendly.',
+    default: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  requiresRegistration?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Key program highlights or bullet points describing what to expect',
+    type: [String],
+    example: [
+      'All-Night Worship',
+      'Communion Service',
+      'Special Ministrations',
+    ],
+  })
+  @IsArray()
+  @IsString({ each: true })
+  @IsOptional()
+  highlights?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Priority flag to manually pin a specific event to the homepage banner',
+    default: false,
+  })
+  @IsBoolean()
+  @IsOptional()
+  isFeatured?: boolean;
 
   @ApiProperty({ description: 'Event start date and time (ISO 8601 string)' })
   @IsDateString()

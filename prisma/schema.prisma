@@ -20,6 +20,16 @@ enum MembershipStatus {
   LEADER
 }
 
+enum EventCategory {
+  GENERAL
+  CONFERENCE
+  VIGIL
+  COMMUNION
+  REVIVAL
+  WORSHIP
+  OUTREACH
+}
+
 enum EventStatus {
   DRAFT
   PUBLISHED
@@ -155,19 +165,23 @@ model Person {
 }
 
 model Event {
-  id                 String      @id @default(uuid())
-  churchId           String      @map("church_id")
-  title              String      @db.VarChar(255)
-  description        String?     @db.Text
-  location           String?     @db.VarChar(255)
-  startDate          DateTime    @map("start_date")
-  endDate            DateTime    @map("end_date")
-  status             EventStatus @default(DRAFT)
-  imageUrl           String?     @map("image_url") @db.VarChar(512)
-  googleCalendarSync Boolean     @default(false) @map("google_calendar_sync")
-  capacity           Int?        @map("capacity")
-  createdAt          DateTime    @default(now()) @map("created_at")
-  updatedAt          DateTime    @updatedAt @map("updated_at")
+  id                   String        @id @default(uuid())
+  churchId             String        @map("church_id")
+  title                String        @db.VarChar(255)
+  description          String?       @db.Text
+  category             EventCategory @default(GENERAL)
+  location             String?       @db.VarChar(255)
+  startDate            DateTime      @map("start_date")
+  endDate              DateTime      @map("end_date")
+  status               EventStatus   @default(DRAFT)
+  imageUrl             String?       @map("image_url") @db.VarChar(512)
+  googleCalendarSync   Boolean       @default(false) @map("google_calendar_sync")
+  capacity             Int?          @map("capacity")
+  requiresRegistration Boolean       @default(true) @map("requires_registration")
+  highlights           Json?         @map("highlights")
+  isFeatured           Boolean       @default(false) @map("is_featured")
+  createdAt            DateTime      @default(now()) @map("created_at")
+  updatedAt            DateTime      @updatedAt @map("updated_at")
 
   church        Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
   registrations Registration[]
@@ -177,6 +191,10 @@ model Event {
   @@index([churchId])
   @@index([status])
   @@index([startDate])
+  @@index([churchId, status, startDate])
+  @@index([churchId, requiresRegistration])
+  @@index([churchId, isFeatured])
+  @@index([churchId, category])
   @@map("events")
 }
 

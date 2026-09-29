@@ -1,6 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { EventStatus, RegistrationStatus } from '@prisma/client';
+import { EventCategory, EventStatus, RegistrationStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventsService } from './events.service';
 
@@ -87,6 +87,50 @@ describe('EventsService', () => {
         },
       });
     });
+
+    it('should create a non-registration open event with category, highlights, and featured flag', async () => {
+      prismaMock.church.findUnique.mockResolvedValue({ id: 'church-1' });
+      prismaMock.event.create.mockResolvedValue({
+        id: 'event-vigil-1',
+        title: 'Night of Wonders',
+        category: EventCategory.VIGIL,
+        requiresRegistration: false,
+        highlights: ['All-Night Worship', 'Deliverance Prayers'],
+        isFeatured: true,
+        startDate: new Date('2026-10-02T22:00:00Z'),
+        endDate: new Date('2026-10-03T05:00:00Z'),
+        churchId: 'church-1',
+      });
+
+      const result = await service.create(
+        {
+          title: 'Night of Wonders',
+          category: EventCategory.VIGIL,
+          requiresRegistration: false,
+          highlights: ['All-Night Worship', 'Deliverance Prayers'],
+          isFeatured: true,
+          startDate: '2026-10-02T22:00:00Z',
+          endDate: '2026-10-03T05:00:00Z',
+        },
+        'church-1',
+      );
+
+      expect(result.requiresRegistration).toBe(false);
+      expect(result.category).toBe(EventCategory.VIGIL);
+      expect(result.isFeatured).toBe(true);
+      expect(prismaMock.event.create).toHaveBeenCalledWith({
+        data: {
+          title: 'Night of Wonders',
+          category: EventCategory.VIGIL,
+          requiresRegistration: false,
+          highlights: ['All-Night Worship', 'Deliverance Prayers'],
+          isFeatured: true,
+          startDate: new Date('2026-10-02T22:00:00Z'),
+          endDate: new Date('2026-10-03T05:00:00Z'),
+          churchId: 'church-1',
+        },
+      });
+    });
   });
 
   describe('findAll', () => {
@@ -135,6 +179,31 @@ describe('EventsService', () => {
           where: {
             churchId: 'church-1',
             status: EventStatus.PUBLISHED,
+          },
+        }),
+      );
+    });
+
+    it('should filter by category, requiresRegistration, and isFeatured', async () => {
+      prismaMock.event.findMany.mockResolvedValue([]);
+      prismaMock.event.count.mockResolvedValue(0);
+
+      await service.findAll(
+        {
+          category: EventCategory.VIGIL,
+          requiresRegistration: false,
+          isFeatured: true,
+        },
+        'church-1',
+      );
+
+      expect(prismaMock.event.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            churchId: 'church-1',
+            category: EventCategory.VIGIL,
+            requiresRegistration: false,
+            isFeatured: true,
           },
         }),
       );

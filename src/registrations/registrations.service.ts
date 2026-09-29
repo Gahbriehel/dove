@@ -61,6 +61,12 @@ export class RegistrationsService {
       throw new NotFoundException(`Event with ID "${eventId}" not found`);
     }
 
+    if (!event.requiresRegistration) {
+      throw new BadRequestException(
+        'Registration is not required for this event. Admission is free, open to the public, and walk-in friendly.',
+      );
+    }
+
     if (event.status !== EventStatus.PUBLISHED) {
       throw new BadRequestException(
         'Registration is only allowed for published events',

@@ -1,7 +1,8 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { EventStatus } from '@prisma/client';
-import { Type } from 'class-transformer';
+import { EventCategory, EventStatus } from '@prisma/client';
+import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -24,6 +25,38 @@ export class QueryEventDto {
   @IsEnum(EventStatus)
   @IsOptional()
   status?: EventStatus;
+
+  @ApiPropertyOptional({
+    enum: EventCategory,
+    description: 'Filter events by ministry category',
+  })
+  @IsEnum(EventCategory)
+  @IsOptional()
+  category?: EventCategory;
+
+  @ApiPropertyOptional({
+    description: 'Filter events by whether registration is required',
+  })
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return undefined;
+  })
+  @IsBoolean()
+  @IsOptional()
+  requiresRegistration?: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Filter events by featured status',
+  })
+  @Transform(({ value }) => {
+    if (value === 'true' || value === true) return true;
+    if (value === 'false' || value === false) return false;
+    return undefined;
+  })
+  @IsBoolean()
+  @IsOptional()
+  isFeatured?: boolean;
 
   @ApiPropertyOptional({ description: 'Search events by title or description' })
   @IsString()
