@@ -210,6 +210,47 @@ export class UpcomingEventDto {
   totalTeams: number;
 }
 
+export class UpcomingBirthdayDto {
+  @ApiProperty({ example: 'b5c68b92-7208-410a-8ab5-eef4d40212e1' })
+  id: string;
+
+  @ApiProperty({ example: 'John' })
+  firstName: string;
+
+  @ApiProperty({ example: 'Doe' })
+  lastName: string;
+
+  @ApiPropertyOptional({ example: 'john.doe@example.com' })
+  email?: string | null;
+
+  @ApiPropertyOptional({ example: '+1234567890' })
+  phone?: string | null;
+
+  @ApiProperty({ enum: MembershipStatus, example: MembershipStatus.MEMBER })
+  membershipStatus: MembershipStatus;
+
+  @ApiProperty({ example: '1995-10-15T00:00:00.000Z' })
+  dateOfBirth: Date;
+
+  @ApiProperty({
+    description: 'Next birthday occurrence date',
+    example: '2026-10-15T00:00:00.000Z',
+  })
+  nextBirthday: Date;
+
+  @ApiProperty({
+    description: 'Number of days until birthday (0 = today)',
+    example: 11,
+  })
+  daysUntil: number;
+
+  @ApiPropertyOptional({
+    description: 'Age the person will be turning',
+    example: 31,
+  })
+  turningAge?: number;
+}
+
 export class DashboardDataDto {
   @ApiProperty({ type: DashboardOverviewDto })
   overview: DashboardOverviewDto;
@@ -222,6 +263,9 @@ export class DashboardDataDto {
 
   @ApiProperty({ type: [UpcomingEventDto] })
   upcomingEvents: UpcomingEventDto[];
+
+  @ApiProperty({ type: [UpcomingBirthdayDto] })
+  upcomingBirthdays: UpcomingBirthdayDto[];
 
   @ApiPropertyOptional()
   recentBounceAlerts?: any[];

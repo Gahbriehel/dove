@@ -49,6 +49,7 @@ export class DashboardService {
       rawUpcomingEvents,
       unresolvedBounceCount,
       recentBounceAlerts,
+      rawPeopleWithBirthdays,
     ] = await Promise.all([
       // Total registrations for church events
       this.prisma.registration.count({
@@ -171,6 +172,23 @@ export class DashboardService {
         orderBy: { createdAt: 'desc' },
         take: 5,
       }),
+
+      // People with recorded dateOfBirth for upcoming birthdays
+      this.prisma.person.findMany({
+        where: {
+          churchId,
+          dateOfBirth: { not: null },
+        },
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          phone: true,
+          membershipStatus: true,
+          dateOfBirth: true,
+        },
+      }),
     ]);
 
     const attendanceRate =
@@ -192,6 +210,48 @@ export class DashboardService {
       totalRegistrations: e._count.registrations,
       totalTeams: e._count.teams,
     }));
+
+    const todayUtcMidnight = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+    );
+    const currentYear = todayUtcMidnight.getUTCFullYear();
+
+    const upcomingBirthdays = rawPeopleWithBirthdays
+      .map((person) => {
+        const dob = new Date(person.dateOfBirth!);
+        const birthMonth = dob.getUTCMonth();
+        const birthDate = dob.getUTCDate();
+
+        let nextBirthday = new Date(
+          Date.UTC(currentYear, birthMonth, birthDate),
+        );
+
+        if (nextBirthday.getTime() < todayUtcMidnight.getTime()) {
+          nextBirthday = new Date(
+            Date.UTC(currentYear + 1, birthMonth, birthDate),
+          );
+        }
+
+        const diffMs = nextBirthday.getTime() - todayUtcMidnight.getTime();
+        const daysUntil = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        const turningAge = nextBirthday.getUTCFullYear() - dob.getUTCFullYear();
+
+        return {
+          id: person.id,
+          firstName: person.firstName,
+          lastName: person.lastName,
+          email: person.email,
+          phone: person.phone,
+          membershipStatus: person.membershipStatus,
+          dateOfBirth: person.dateOfBirth!,
+          nextBirthday,
+          daysUntil,
+          turningAge,
+        };
+      })
+      .filter((item) => item.daysUntil <= 30)
+      .sort((a, b) => a.daysUntil - b.daysUntil)
+      .slice(0, 5);
 
     return {
       overview: {
@@ -223,6 +283,7 @@ export class DashboardService {
       },
       latestRegistrations: rawLatestRegistrations,
       upcomingEvents,
+      upcomingBirthdays,
       recentBounceAlerts,
     };
   }

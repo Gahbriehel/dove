@@ -22,7 +22,7 @@ export class DashboardController {
   @ResponseMessage('Dashboard stats retrieved successfully')
   @ApiOperation({
     summary:
-      'Get aggregate app statistics, latest registrations, and upcoming events',
+      'Get aggregate app statistics, latest registrations, upcoming events, and upcoming birthdays',
   })
   @ApiResponse({
     status: 200,
