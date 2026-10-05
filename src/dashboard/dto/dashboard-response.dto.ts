@@ -249,6 +249,24 @@ export class UpcomingBirthdayDto {
     example: 31,
   })
   turningAge?: number;
+
+  @ApiProperty({
+    description: 'Whether a birthday greeting has been sent for this cycle',
+    example: false,
+  })
+  isGreeted: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Timestamp when greeting was sent',
+    example: '2026-10-05T12:00:00.000Z',
+  })
+  greetedAt?: Date | null;
+
+  @ApiPropertyOptional({
+    description: 'Admin who sent the greeting',
+    example: { id: 'admin-id', name: 'John Doe' },
+  })
+  greetedBy?: { id: string; name: string } | null;
 }
 
 export class DashboardDataDto {

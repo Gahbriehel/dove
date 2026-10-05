@@ -68,6 +68,7 @@ model Church {
   people             Person[]
   events             Event[]
   contactSubmissions ContactSubmission[]
+  birthdayGreetings  BirthdayGreeting[]
 
   @@map("churches")
 }
@@ -88,9 +89,10 @@ model User {
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  church        Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
-  userRoles     UserRole[]
-  refreshTokens RefreshToken[]
+  church                Church             @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  userRoles             UserRole[]
+  refreshTokens         RefreshToken[]
+  sentBirthdayGreetings BirthdayGreeting[] @relation("SentBirthdayGreetings")
 
   @@index([churchId])
   @@map("users")
@@ -155,8 +157,9 @@ model Person {
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  church        Church         @relation(fields: [churchId], references: [id], onDelete: Cascade)
-  registrations Registration[]
+  church            Church             @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  registrations     Registration[]
+  birthdayGreetings BirthdayGreeting[]
 
   @@index([churchId])
   @@index([email])
@@ -347,4 +350,32 @@ model ContactSubmission {
   @@index([churchId])
   @@index([type])
   @@map("contact_submissions")
+}
+
+model BirthdayGreeting {
+  id            String   @id @default(uuid())
+  churchId      String   @map("church_id")
+  personId      String   @map("person_id")
+  sentByUserId  String   @map("sent_by_user_id")
+  year          Int
+  subject       String   @db.VarChar(255)
+  heading       String?  @db.VarChar(255)
+  message       String   @db.Text
+  imageUrl      String?  @map("image_url") @db.VarChar(512)
+  ctaLabel      String?  @map("cta_label") @db.VarChar(100)
+  ctaUrl        String?  @map("cta_url") @db.VarChar(512)
+  resendEmailId String?  @map("resend_email_id") @db.VarChar(255)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+  sentBy User   @relation("SentBirthdayGreetings", fields: [sentByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, year], name: "unique_person_year_greeting")
+  @@index([churchId])
+  @@index([churchId, year])
+  @@index([personId])
+  @@index([sentByUserId])
+  @@map("birthday_greetings")
 }

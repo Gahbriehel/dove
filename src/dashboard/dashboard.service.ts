@@ -216,7 +216,7 @@ export class DashboardService {
     );
     const currentYear = todayUtcMidnight.getUTCFullYear();
 
-    const upcomingBirthdays = rawPeopleWithBirthdays
+    const filteredUpcoming = rawPeopleWithBirthdays
       .map((person) => {
         const dob = new Date(person.dateOfBirth!);
         const birthMonth = dob.getUTCMonth();
@@ -245,6 +245,7 @@ export class DashboardService {
           membershipStatus: person.membershipStatus,
           dateOfBirth: person.dateOfBirth!,
           nextBirthday,
+          cycleYear: nextBirthday.getUTCFullYear(),
           daysUntil,
           turningAge,
         };
@@ -252,6 +253,56 @@ export class DashboardService {
       .filter((item) => item.daysUntil <= 30)
       .sort((a, b) => a.daysUntil - b.daysUntil)
       .slice(0, 5);
+
+    const upcomingPersonIds = filteredUpcoming.map((item) => item.id);
+    const existingGreetings =
+      upcomingPersonIds.length > 0
+        ? await this.prisma.birthdayGreeting.findMany({
+            where: {
+              churchId,
+              personId: { in: upcomingPersonIds },
+              year: { in: [currentYear, currentYear + 1] },
+            },
+            include: {
+              sentBy: {
+                select: {
+                  id: true,
+                  firstName: true,
+                  lastName: true,
+                },
+              },
+            },
+          })
+        : [];
+
+    const greetingsMap = new Map<string, (typeof existingGreetings)[0]>();
+    for (const g of existingGreetings) {
+      greetingsMap.set(`${g.personId}_${g.year}`, g);
+    }
+
+    const upcomingBirthdays = filteredUpcoming.map((item) => {
+      const greeting = greetingsMap.get(`${item.id}_${item.cycleYear}`);
+      return {
+        id: item.id,
+        firstName: item.firstName,
+        lastName: item.lastName,
+        email: item.email,
+        phone: item.phone,
+        membershipStatus: item.membershipStatus,
+        dateOfBirth: item.dateOfBirth,
+        nextBirthday: item.nextBirthday,
+        daysUntil: item.daysUntil,
+        turningAge: item.turningAge,
+        isGreeted: !!greeting,
+        greetedAt: greeting ? greeting.createdAt : null,
+        greetedBy: greeting
+          ? {
+              id: greeting.sentBy.id,
+              name: `${greeting.sentBy.firstName} ${greeting.sentBy.lastName}`.trim(),
+            }
+          : null,
+      };
+    });
 
     return {
       overview: {
