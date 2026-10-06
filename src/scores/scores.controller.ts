@@ -17,6 +17,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Public } from '../common/decorators/public.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
@@ -43,8 +44,11 @@ export class ScoresController {
   })
   @ApiResponse({ status: 409, description: 'Score already exists for team' })
   @ApiResponse({ status: 404, description: 'Game or Team not found' })
-  async recordScore(@Body() recordScoreDto: RecordScoreDto) {
-    return this.scoresService.recordScore(recordScoreDto);
+  async recordScore(
+    @Body() recordScoreDto: RecordScoreDto,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.scoresService.recordScore(recordScoreDto, userChurchId);
   }
 
   @Patch('scores/:id')
@@ -61,8 +65,9 @@ export class ScoresController {
   async updateScore(
     @Param('id') id: string,
     @Body() updateScoreDto: UpdateScoreDto,
+    @CurrentUser('churchId') userChurchId?: string,
   ) {
-    return this.scoresService.updateScore(id, updateScoreDto);
+    return this.scoresService.updateScore(id, updateScoreDto, userChurchId);
   }
 
   @Delete('scores/game/:gameId')
@@ -72,8 +77,11 @@ export class ScoresController {
   @ApiOperation({ summary: 'Clear all scores for a game (Admin only)' })
   @ApiResponse({ status: 200, description: 'All game scores cleared' })
   @ApiResponse({ status: 404, description: 'Game not found' })
-  async clearGameScores(@Param('gameId') gameId: string) {
-    return this.scoresService.clearGameScores(gameId);
+  async clearGameScores(
+    @Param('gameId') gameId: string,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.scoresService.clearGameScores(gameId, userChurchId);
   }
 
   @Public()
@@ -86,8 +94,11 @@ export class ScoresController {
       'Leaderboard retrieved successfully, teams sorted descending by total score',
   })
   @ApiResponse({ status: 404, description: 'Event not found' })
-  async getLeaderboard(@Param('eventId') eventId: string) {
-    return this.scoresService.getLeaderboard(eventId);
+  async getLeaderboard(
+    @Param('eventId') eventId: string,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.scoresService.getLeaderboard(eventId, userChurchId);
   }
 
   @Public()
@@ -99,8 +110,12 @@ export class ScoresController {
   async exportLeaderboardCsv(
     @Param('eventId') eventId: string,
     @Res() res: Response,
+    @CurrentUser('churchId') userChurchId?: string,
   ): Promise<void> {
-    const { leaderboard } = await this.scoresService.getLeaderboard(eventId);
+    const { leaderboard } = await this.scoresService.getLeaderboard(
+      eventId,
+      userChurchId,
+    );
     const ranked = leaderboard.map((entry, index) => ({
       rank: index + 1,
       ...entry,

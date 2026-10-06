@@ -10,11 +10,12 @@ import { QueryTeamDto } from './dto/query-team.dto';
 export class TeamsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createTeamDto: CreateTeamDto) {
+  async create(createTeamDto: CreateTeamDto, userChurchId?: string) {
     const { eventId, name, color } = createTeamDto;
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, churchId },
     });
     if (!event) {
       throw new NotFoundException(`Event with ID "${eventId}" not found`);
@@ -29,10 +30,17 @@ export class TeamsService {
     });
   }
 
-  private buildWhere(query: QueryTeamDto): Prisma.TeamWhereInput {
+  private buildWhere(
+    query: QueryTeamDto,
+    churchId: string,
+  ): Prisma.TeamWhereInput {
     const { eventId, search } = query;
 
-    const where: Prisma.TeamWhereInput = {};
+    const where: Prisma.TeamWhereInput = {
+      event: {
+        churchId,
+      },
+    };
 
     if (eventId) {
       where.eventId = eventId;
@@ -45,11 +53,12 @@ export class TeamsService {
     return where;
   }
 
-  async findAll(query: QueryTeamDto) {
+  async findAll(query: QueryTeamDto, userChurchId?: string) {
     const { page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
-    const where = this.buildWhere(query);
+    const where = this.buildWhere(query, churchId);
 
     const [items, total] = await Promise.all([
       this.prisma.team.findMany({
@@ -80,8 +89,9 @@ export class TeamsService {
     };
   }
 
-  async exportAll(query: QueryTeamDto) {
-    const where = this.buildWhere(query);
+  async exportAll(query: QueryTeamDto, userChurchId?: string) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+    const where = this.buildWhere(query, churchId);
 
     return this.prisma.team.findMany({
       where,
@@ -94,9 +104,16 @@ export class TeamsService {
     });
   }
 
-  async findOne(id: string) {
-    const team = await this.prisma.team.findUnique({
-      where: { id },
+  async findOne(id: string, userChurchId?: string) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const team = await this.prisma.team.findFirst({
+      where: {
+        id,
+        event: {
+          churchId,
+        },
+      },
       include: {
         event: {
           select: { id: true, title: true },
@@ -121,14 +138,19 @@ export class TeamsService {
     return team;
   }
 
-  async update(id: string, updateTeamDto: UpdateTeamDto) {
-    await this.findOne(id);
+  async update(
+    id: string,
+    updateTeamDto: UpdateTeamDto,
+    userChurchId?: string,
+  ) {
+    await this.findOne(id, userChurchId);
 
     const { eventId, ...rest } = updateTeamDto;
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
     if (eventId) {
-      const event = await this.prisma.event.findUnique({
-        where: { id: eventId },
+      const event = await this.prisma.event.findFirst({
+        where: { id: eventId, churchId },
       });
       if (!event) {
         throw new NotFoundException(`Event with ID "${eventId}" not found`);
@@ -144,8 +166,8 @@ export class TeamsService {
     });
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, userChurchId?: string) {
+    await this.findOne(id, userChurchId);
 
     await this.prisma.team.delete({
       where: { id },

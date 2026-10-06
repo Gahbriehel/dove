@@ -15,15 +15,9 @@ export class EventsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createEventDto: CreateEventDto, userChurchId?: string) {
-    const {
-      churchId: bodyChurchId,
-      startDate,
-      endDate,
-      ...rest
-    } = createEventDto;
+    const { startDate, endDate, ...rest } = createEventDto;
 
-    const churchId =
-      bodyChurchId || userChurchId || (await this.prisma.getDefaultChurchId());
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
     const church = await this.prisma.church.findUnique({
       where: { id: churchId },

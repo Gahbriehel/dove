@@ -11,10 +11,9 @@ export class PeopleService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createPersonDto: CreatePersonDto, userChurchId?: string) {
-    const { churchId: bodyChurchId, dateOfBirth, ...rest } = createPersonDto;
+    const { dateOfBirth, ...rest } = createPersonDto;
 
-    const churchId =
-      bodyChurchId || userChurchId || (await this.prisma.getDefaultChurchId());
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
     const church = await this.prisma.church.findUnique({
       where: { id: churchId },
@@ -260,8 +259,9 @@ export class PeopleService {
       throw new NotFoundException(`Person with ID "${id}" not found`);
     }
 
-    const eventsRegisteredCount = person.registrations.length;
-    const eventsAttendedCount = person.registrations.filter(
+    const registrations = person.registrations ?? [];
+    const eventsRegisteredCount = registrations.length;
+    const eventsAttendedCount = registrations.filter(
       (reg) => reg.attendance !== null,
     ).length;
 

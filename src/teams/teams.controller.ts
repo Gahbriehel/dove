@@ -18,6 +18,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
@@ -40,8 +41,11 @@ export class TeamsController {
   @ApiResponse({ status: 201, description: 'Team created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 404, description: 'Event not found' })
-  async create(@Body() createTeamDto: CreateTeamDto) {
-    return this.teamsService.create(createTeamDto);
+  async create(
+    @Body() createTeamDto: CreateTeamDto,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.teamsService.create(createTeamDto, userChurchId);
   }
 
   @Get()
@@ -53,8 +57,11 @@ export class TeamsController {
     status: 200,
     description: 'List of teams retrieved successfully',
   })
-  async findAll(@Query() query: QueryTeamDto) {
-    return this.teamsService.findAll(query);
+  async findAll(
+    @Query() query: QueryTeamDto,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.teamsService.findAll(query, userChurchId);
   }
 
   @Get('export')
@@ -63,9 +70,10 @@ export class TeamsController {
   @ApiResponse({ status: 200, description: 'CSV file of teams' })
   async exportCsv(
     @Query() query: QueryTeamDto,
+    @CurrentUser('churchId') userChurchId: string,
     @Res() res: Response,
   ): Promise<void> {
-    const teams = await this.teamsService.exportAll(query);
+    const teams = await this.teamsService.exportAll(query, userChurchId);
     const csv = buildCsv(teams, [
       { header: 'ID', value: (r) => r.id },
       { header: 'Name', value: (r) => r.name },
@@ -83,8 +91,11 @@ export class TeamsController {
   @ApiOperation({ summary: 'Get team details by ID' })
   @ApiResponse({ status: 200, description: 'Team retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })
-  async findOne(@Param('id') id: string) {
-    return this.teamsService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.teamsService.findOne(id, userChurchId);
   }
 
   @Patch(':id')
@@ -93,8 +104,12 @@ export class TeamsController {
   @ApiOperation({ summary: 'Update a team record' })
   @ApiResponse({ status: 200, description: 'Team updated successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })
-  async update(@Param('id') id: string, @Body() updateTeamDto: UpdateTeamDto) {
-    return this.teamsService.update(id, updateTeamDto);
+  async update(
+    @Param('id') id: string,
+    @Body() updateTeamDto: UpdateTeamDto,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.teamsService.update(id, updateTeamDto, userChurchId);
   }
 
   @Delete(':id')
@@ -103,7 +118,10 @@ export class TeamsController {
   @ApiOperation({ summary: 'Delete a team record' })
   @ApiResponse({ status: 200, description: 'Team deleted successfully' })
   @ApiResponse({ status: 404, description: 'Team not found' })
-  async remove(@Param('id') id: string) {
-    return this.teamsService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.teamsService.remove(id, userChurchId);
   }
 }

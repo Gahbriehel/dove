@@ -12,18 +12,25 @@ import { UpdateScoreDto } from './dto/update-score.dto';
 export class ScoresService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async recordScore(recordScoreDto: RecordScoreDto) {
+  async recordScore(recordScoreDto: RecordScoreDto, userChurchId?: string) {
     const { gameId, teamId, points, notes } = recordScoreDto;
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
-    const game = await this.prisma.game.findUnique({
-      where: { id: gameId },
+    const game = await this.prisma.game.findFirst({
+      where: {
+        id: gameId,
+        event: { churchId },
+      },
     });
     if (!game) {
       throw new NotFoundException(`Game with ID "${gameId}" not found`);
     }
 
-    const team = await this.prisma.team.findUnique({
-      where: { id: teamId },
+    const team = await this.prisma.team.findFirst({
+      where: {
+        id: teamId,
+        event: { churchId },
+      },
     });
     if (!team) {
       throw new NotFoundException(`Team with ID "${teamId}" not found`);
@@ -69,9 +76,20 @@ export class ScoresService {
     };
   }
 
-  async updateScore(id: string, updateScoreDto: UpdateScoreDto) {
-    const existingScore = await this.prisma.score.findUnique({
-      where: { id },
+  async updateScore(
+    id: string,
+    updateScoreDto: UpdateScoreDto,
+    userChurchId?: string,
+  ) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const existingScore = await this.prisma.score.findFirst({
+      where: {
+        id,
+        game: {
+          event: { churchId },
+        },
+      },
       include: { game: true, team: true },
     });
     if (!existingScore) {
@@ -81,15 +99,21 @@ export class ScoresService {
     const gameId = updateScoreDto.gameId ?? existingScore.gameId;
     const teamId = updateScoreDto.teamId ?? existingScore.teamId;
 
-    const game = await this.prisma.game.findUnique({
-      where: { id: gameId },
+    const game = await this.prisma.game.findFirst({
+      where: {
+        id: gameId,
+        event: { churchId },
+      },
     });
     if (!game) {
       throw new NotFoundException(`Game with ID "${gameId}" not found`);
     }
 
-    const team = await this.prisma.team.findUnique({
-      where: { id: teamId },
+    const team = await this.prisma.team.findFirst({
+      where: {
+        id: teamId,
+        event: { churchId },
+      },
     });
     if (!team) {
       throw new NotFoundException(`Team with ID "${teamId}" not found`);
@@ -134,9 +158,14 @@ export class ScoresService {
     };
   }
 
-  async clearGameScores(gameId: string) {
-    const game = await this.prisma.game.findUnique({
-      where: { id: gameId },
+  async clearGameScores(gameId: string, userChurchId?: string) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const game = await this.prisma.game.findFirst({
+      where: {
+        id: gameId,
+        event: { churchId },
+      },
     });
     if (!game) {
       throw new NotFoundException(`Game with ID "${gameId}" not found`);
@@ -152,9 +181,11 @@ export class ScoresService {
     };
   }
 
-  async getLeaderboard(eventId: string) {
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
+  async getLeaderboard(eventId: string, userChurchId?: string) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, churchId },
     });
     if (!event) {
       throw new NotFoundException(`Event with ID "${eventId}" not found`);

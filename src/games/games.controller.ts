@@ -18,6 +18,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
@@ -40,8 +41,11 @@ export class GamesController {
   @ApiResponse({ status: 201, description: 'Game created successfully' })
   @ApiResponse({ status: 400, description: 'Invalid input data' })
   @ApiResponse({ status: 404, description: 'Event not found' })
-  async create(@Body() createGameDto: CreateGameDto) {
-    return this.gamesService.create(createGameDto);
+  async create(
+    @Body() createGameDto: CreateGameDto,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.gamesService.create(createGameDto, userChurchId);
   }
 
   @Get()
@@ -53,8 +57,11 @@ export class GamesController {
     status: 200,
     description: 'List of games retrieved successfully',
   })
-  async findAll(@Query() query: QueryGameDto) {
-    return this.gamesService.findAll(query);
+  async findAll(
+    @Query() query: QueryGameDto,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.gamesService.findAll(query, userChurchId);
   }
 
   @Get('export')
@@ -63,9 +70,10 @@ export class GamesController {
   @ApiResponse({ status: 200, description: 'CSV file of games' })
   async exportCsv(
     @Query() query: QueryGameDto,
+    @CurrentUser('churchId') userChurchId: string,
     @Res() res: Response,
   ): Promise<void> {
-    const games = await this.gamesService.exportAll(query);
+    const games = await this.gamesService.exportAll(query, userChurchId);
     const csv = buildCsv(games, [
       { header: 'ID', value: (r) => r.id },
       { header: 'Name', value: (r) => r.name },
@@ -83,8 +91,11 @@ export class GamesController {
   @ApiOperation({ summary: 'Get game details by ID' })
   @ApiResponse({ status: 200, description: 'Game retrieved successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })
-  async findOne(@Param('id') id: string) {
-    return this.gamesService.findOne(id);
+  async findOne(
+    @Param('id') id: string,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.gamesService.findOne(id, userChurchId);
   }
 
   @Patch(':id')
@@ -93,8 +104,12 @@ export class GamesController {
   @ApiOperation({ summary: 'Update a game record' })
   @ApiResponse({ status: 200, description: 'Game updated successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })
-  async update(@Param('id') id: string, @Body() updateGameDto: UpdateGameDto) {
-    return this.gamesService.update(id, updateGameDto);
+  async update(
+    @Param('id') id: string,
+    @Body() updateGameDto: UpdateGameDto,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.gamesService.update(id, updateGameDto, userChurchId);
   }
 
   @Delete(':id')
@@ -103,7 +118,10 @@ export class GamesController {
   @ApiOperation({ summary: 'Delete a game record' })
   @ApiResponse({ status: 200, description: 'Game deleted successfully' })
   @ApiResponse({ status: 404, description: 'Game not found' })
-  async remove(@Param('id') id: string) {
-    return this.gamesService.remove(id);
+  async remove(
+    @Param('id') id: string,
+    @CurrentUser('churchId') userChurchId?: string,
+  ) {
+    return this.gamesService.remove(id, userChurchId);
   }
 }

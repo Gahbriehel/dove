@@ -27,11 +27,12 @@ const GAME_INCLUDE = {
 export class GamesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async create(createGameDto: CreateGameDto) {
+  async create(createGameDto: CreateGameDto, userChurchId?: string) {
     const { eventId, name, description, maxScore } = createGameDto;
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
-    const event = await this.prisma.event.findUnique({
-      where: { id: eventId },
+    const event = await this.prisma.event.findFirst({
+      where: { id: eventId, churchId },
     });
     if (!event) {
       throw new NotFoundException(`Event with ID "${eventId}" not found`);
@@ -48,10 +49,17 @@ export class GamesService {
     });
   }
 
-  private buildWhere(query: QueryGameDto): Prisma.GameWhereInput {
+  private buildWhere(
+    query: QueryGameDto,
+    churchId: string,
+  ): Prisma.GameWhereInput {
     const { eventId, search } = query;
 
-    const where: Prisma.GameWhereInput = {};
+    const where: Prisma.GameWhereInput = {
+      event: {
+        churchId,
+      },
+    };
 
     if (eventId) {
       where.eventId = eventId;
@@ -67,11 +75,12 @@ export class GamesService {
     return where;
   }
 
-  async findAll(query: QueryGameDto) {
+  async findAll(query: QueryGameDto, userChurchId?: string) {
     const { page = 1, limit = 10 } = query;
     const skip = (page - 1) * limit;
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
-    const where = this.buildWhere(query);
+    const where = this.buildWhere(query, churchId);
 
     const [items, total] = await Promise.all([
       this.prisma.game.findMany({
@@ -95,8 +104,9 @@ export class GamesService {
     };
   }
 
-  async exportAll(query: QueryGameDto) {
-    const where = this.buildWhere(query);
+  async exportAll(query: QueryGameDto, userChurchId?: string) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+    const where = this.buildWhere(query, churchId);
 
     return this.prisma.game.findMany({
       where,
@@ -109,9 +119,16 @@ export class GamesService {
     });
   }
 
-  async findOne(id: string) {
-    const game = await this.prisma.game.findUnique({
-      where: { id },
+  async findOne(id: string, userChurchId?: string) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const game = await this.prisma.game.findFirst({
+      where: {
+        id,
+        event: {
+          churchId,
+        },
+      },
       include: GAME_INCLUDE,
     });
 
@@ -122,14 +139,19 @@ export class GamesService {
     return game;
   }
 
-  async update(id: string, updateGameDto: UpdateGameDto) {
-    await this.findOne(id);
+  async update(
+    id: string,
+    updateGameDto: UpdateGameDto,
+    userChurchId?: string,
+  ) {
+    await this.findOne(id, userChurchId);
 
     const { eventId, ...rest } = updateGameDto;
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
     if (eventId) {
-      const event = await this.prisma.event.findUnique({
-        where: { id: eventId },
+      const event = await this.prisma.event.findFirst({
+        where: { id: eventId, churchId },
       });
       if (!event) {
         throw new NotFoundException(`Event with ID "${eventId}" not found`);
@@ -146,8 +168,8 @@ export class GamesService {
     });
   }
 
-  async remove(id: string) {
-    await this.findOne(id);
+  async remove(id: string, userChurchId?: string) {
+    await this.findOne(id, userChurchId);
 
     await this.prisma.game.delete({
       where: { id },
