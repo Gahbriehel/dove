@@ -10,6 +10,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -19,7 +20,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import type { EmailBounce } from '@prisma/client';
+import { type EmailBounce, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import type { Response } from 'express';
@@ -34,6 +35,10 @@ import {
   sendCsv,
 } from '../../common/utils/csv.util';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  EmailBounceAnalyticsResponseDto,
+  QueryEmailBounceAnalyticsDto,
+} from '../dto/email-bounce-analytics.dto';
 import { RemediateEmailBounceDto } from '../dto/remediate-email-bounce.dto';
 import {
   EMAIL_SERVICE,
@@ -43,6 +48,21 @@ import {
   generateGoogleCalendarUrl,
   generateIcsBuffer,
 } from '../utils/calendar.util';
+
+const MONTH_NAMES = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
 
 interface BroadcastContentSnapshot {
   subject?: string;
@@ -78,6 +98,217 @@ export class EmailBounceController {
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  @Get('analytics')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Email bounce analytics retrieved successfully')
+  @ApiOperation({
+    summary:
+      'Get email bounce & delivery analytics (Bounce rate, Delivery rate, Monthly trends, Breakdowns)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Email bounce analytics retrieved successfully',
+    type: EmailBounceAnalyticsResponseDto,
+  })
+  async getAnalytics(
+    @CurrentUser('churchId') churchId: string,
+    @Query() query: QueryEmailBounceAnalyticsDto,
+  ): Promise<EmailBounceAnalyticsResponseDto> {
+    const currentYear = new Date().getUTCFullYear();
+    const targetYear = query.year || currentYear;
+    const targetMonth = query.month;
+
+    let startDate: Date;
+    let endDate: Date;
+
+    if (targetMonth) {
+      startDate = new Date(
+        Date.UTC(targetYear, targetMonth - 1, 1, 0, 0, 0, 0),
+      );
+      endDate = new Date(Date.UTC(targetYear, targetMonth, 0, 23, 59, 59, 999));
+    } else {
+      startDate = new Date(Date.UTC(targetYear, 0, 1, 0, 0, 0, 0));
+      endDate = new Date(Date.UTC(targetYear, 11, 31, 23, 59, 59, 999));
+    }
+
+    const sendLogWhere: Prisma.EmailSendLogWhereInput = {
+      churchId,
+      createdAt: {
+        gte: startDate,
+        lte: endDate,
+      },
+    };
+    if (query.emailType) {
+      sendLogWhere.emailType = query.emailType;
+    }
+
+    const bounceWhere: Prisma.EmailBounceWhereInput = {
+      churchId,
+      createdAt: {
+        gte: startDate,
+        lte: endDate,
+      },
+    };
+    if (query.emailType) {
+      bounceWhere.emailType = query.emailType;
+    }
+    if (query.recipientType) {
+      bounceWhere.recipientType = query.recipientType;
+    }
+
+    const [sendLogs, bounces] = await Promise.all([
+      this.prisma.emailSendLog.findMany({
+        where: sendLogWhere,
+        select: {
+          id: true,
+          emailType: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.emailBounce.findMany({
+        where: bounceWhere,
+        select: {
+          id: true,
+          email: true,
+          eventType: true,
+          bounceType: true,
+          emailType: true,
+          recipientType: true,
+          isResolved: true,
+          createdAt: true,
+        },
+      }),
+    ]);
+
+    const totalSent = sendLogs.length;
+    const totalBounces = bounces.length;
+    const resolvedBounces = bounces.filter((b) => b.isResolved).length;
+    const unresolvedBounces = totalBounces - resolvedBounces;
+
+    const bounceRate =
+      totalSent > 0 ? Number(((totalBounces / totalSent) * 100).toFixed(2)) : 0;
+
+    const resolutionRate =
+      totalBounces > 0
+        ? Number(((resolvedBounces / totalBounces) * 100).toFixed(2))
+        : 0;
+
+    const deliveryRate =
+      totalSent > 0 ? Number(Math.max(0, 100 - bounceRate).toFixed(2)) : 100;
+
+    const computeBreakdown = (
+      items: (string | null | undefined)[],
+      total: number,
+    ) => {
+      const map = new Map<string, number>();
+      for (const item of items) {
+        const key = item || 'Unknown';
+        map.set(key, (map.get(key) || 0) + 1);
+      }
+      return Array.from(map.entries())
+        .map(([category, count]) => ({
+          category,
+          count,
+          percentage:
+            total > 0 ? Number(((count / total) * 100).toFixed(2)) : 0,
+        }))
+        .sort((a, b) => b.count - a.count);
+    };
+
+    const byEventType = computeBreakdown(
+      bounces.map((b) => b.eventType),
+      totalBounces,
+    );
+    const byBounceType = computeBreakdown(
+      bounces.map((b) => b.bounceType),
+      totalBounces,
+    );
+    const byEmailType = computeBreakdown(
+      bounces.map((b) => b.emailType),
+      totalBounces,
+    );
+    const byRecipientType = computeBreakdown(
+      bounces.map((b) => b.recipientType),
+      totalBounces,
+    );
+
+    const monthlyStats = Array.from({ length: 12 }, () => ({
+      sent: 0,
+      bounced: 0,
+      resolved: 0,
+      unresolved: 0,
+    }));
+
+    for (const log of sendLogs) {
+      const m = new Date(log.createdAt).getUTCMonth();
+      if (m >= 0 && m < 12) {
+        monthlyStats[m].sent++;
+      }
+    }
+
+    for (const b of bounces) {
+      const m = new Date(b.createdAt).getUTCMonth();
+      if (m >= 0 && m < 12) {
+        monthlyStats[m].bounced++;
+        if (b.isResolved) {
+          monthlyStats[m].resolved++;
+        } else {
+          monthlyStats[m].unresolved++;
+        }
+      }
+    }
+
+    const monthlyTrend = monthlyStats.map((stat, idx) => {
+      const mBounceRate =
+        stat.sent > 0
+          ? Number(((stat.bounced / stat.sent) * 100).toFixed(2))
+          : 0;
+      return {
+        month: idx + 1,
+        monthName: MONTH_NAMES[idx],
+        sentCount: stat.sent,
+        bounceCount: stat.bounced,
+        resolvedCount: stat.resolved,
+        unresolvedCount: stat.unresolved,
+        bounceRate: mBounceRate,
+      };
+    });
+
+    const domainMap = new Map<string, number>();
+    for (const b of bounces) {
+      const email = b.email || '';
+      const domain = email.includes('@')
+        ? email.split('@')[1].toLowerCase().trim()
+        : 'unknown';
+      domainMap.set(domain, (domainMap.get(domain) || 0) + 1);
+    }
+    const topFailingDomains = Array.from(domainMap.entries())
+      .map(([domain, count]) => ({ domain, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    return {
+      year: targetYear,
+      month: targetMonth,
+      summary: {
+        totalSent,
+        totalBounces,
+        resolvedBounces,
+        unresolvedBounces,
+        bounceRate,
+        resolutionRate,
+        deliveryRate,
+      },
+      byEventType,
+      byBounceType,
+      byEmailType,
+      byRecipientType,
+      monthlyTrend,
+      topFailingDomains,
+    };
   }
 
   @Get('export')

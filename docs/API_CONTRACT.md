@@ -200,3 +200,36 @@ Admin and Super Admin only. Deletes a contact submission.
 
 - GET /departments & GET /departments/:id
 - People & Profile endpoints (GET /people, GET /auth/profile) will include assigned `departments` array for administrative & member UI views.
+
+---
+
+# Email Bounces
+
+GET /email-bounces
+
+Admin & Super Admin only. Returns active (unresolved) email delivery failures and bounce alerts.
+
+---
+
+GET /email-bounces/analytics
+
+Admin & Super Admin only. Retrieves bounce rates, delivery rate, resolution rates, event type breakdowns, monthly trends, and top failing domains.
+Query Parameters: `year` (optional number), `month` (optional 1-12), `emailType` (optional string), `recipientType` (optional string).
+
+---
+
+GET /email-bounces/export
+
+Admin & Super Admin only. Exports email bounce alerts as a downloadable CSV file.
+
+---
+
+PATCH /email-bounces/:id/resolve
+
+Admin & Super Admin only. Marks an email bounce alert as resolved.
+
+---
+
+POST /email-bounces/:id/remediate
+
+Admin & Super Admin only. Corrects the bounced email address on the Person / User record, resets their email status to `DELIVERABLE`, marks the bounce alert as resolved, and optionally resends the original email with original context.
