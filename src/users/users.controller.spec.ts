@@ -101,7 +101,7 @@ describe('UsersController', () => {
         lastName: 'Doe',
       };
 
-      const result = await controller.create(dto, 'church-123');
+      const result = await controller.create(dto, 'church-123', 'admin-super');
 
       expect(result).toHaveProperty('message', 'User created successfully');
       expect(emailServiceMock.sendAdminWelcome).toHaveBeenCalledWith({
@@ -110,6 +110,7 @@ describe('UsersController', () => {
         temporaryPassword: 'TempPassword123',
         churchName: 'Grace Community Church',
         loginUrl: 'http://localhost:3000/login',
+        sentByUserId: 'admin-super',
       });
     });
   });

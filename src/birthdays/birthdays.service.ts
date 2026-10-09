@@ -241,9 +241,11 @@ export class BirthdaysService {
         contactEmail: person.church?.email || undefined,
         contactPhone: person.church?.phone || undefined,
         imageUrl: resolvedImageUrl,
+        emailType: 'BIRTHDAY_GREETING',
         churchId,
         personId: person.id,
         userId,
+        sentByUserId: userId,
       });
     } catch (emailError) {
       this.logger.error(

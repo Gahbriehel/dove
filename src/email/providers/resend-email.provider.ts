@@ -47,9 +47,13 @@ export class ResendEmailProvider implements IEmailService {
     context: {
       emailType: string;
       churchId?: string;
+      recipientEmail?: string;
+      recipientName?: string;
+      subject?: string;
       personId?: string;
       userId?: string;
       registrationId?: string;
+      sentByUserId?: string;
       broadcastContent?: Prisma.InputJsonValue;
     },
   ): Promise<void> {
@@ -60,9 +64,13 @@ export class ResendEmailProvider implements IEmailService {
           resendEmailId,
           emailType: context.emailType,
           churchId: context.churchId,
+          recipientEmail: context.recipientEmail,
+          recipientName: context.recipientName,
+          subject: context.subject,
           personId: context.personId,
           userId: context.userId,
           registrationId: context.registrationId,
+          sentByUserId: context.sentByUserId,
           broadcastContent: context.broadcastContent,
         },
       });
@@ -162,8 +170,12 @@ export class ResendEmailProvider implements IEmailService {
       await this.logEmailSend(response.data?.id, {
         emailType: 'REGISTRATION_CONFIRMATION',
         churchId: data.churchId,
+        recipientEmail: data.recipientEmail,
+        recipientName: data.recipientName,
+        subject: `Registration Confirmation: ${data.eventTitle}`,
         personId: data.personId,
         registrationId: data.registrationId,
+        sentByUserId: data.sentByUserId,
       });
 
       this.logger.log(
@@ -214,7 +226,11 @@ export class ResendEmailProvider implements IEmailService {
       await this.logEmailSend(response.data?.id, {
         emailType: 'ADMIN_WELCOME',
         churchId: data.churchId,
+        recipientEmail: data.recipientEmail,
+        recipientName: data.recipientName,
+        subject: `Welcome to ${data.churchName || 'Dove Platform'} - Your Admin Account Credentials`,
         userId: data.userId,
+        sentByUserId: data.sentByUserId,
       });
 
       this.logger.log(
@@ -285,7 +301,7 @@ export class ResendEmailProvider implements IEmailService {
       );
 
       const headers: Record<string, string> = {
-        'X-Dove-Email-Type': 'CUSTOM_BROADCAST',
+        'X-Dove-Email-Type': data.emailType || 'CUSTOM_BROADCAST',
       };
       if (data.churchId) headers['X-Dove-Church-Id'] = data.churchId;
       if (data.personId) headers['X-Dove-Person-Id'] = data.personId;
@@ -310,11 +326,15 @@ export class ResendEmailProvider implements IEmailService {
       }
 
       await this.logEmailSend(response.data?.id, {
-        emailType: 'CUSTOM_BROADCAST',
+        emailType: data.emailType || 'CUSTOM_BROADCAST',
         churchId: data.churchId,
+        recipientEmail: data.recipientEmail,
+        recipientName: data.recipientName,
+        subject: data.subject,
         personId: data.personId,
         userId: data.userId,
         registrationId: data.registrationId,
+        sentByUserId: data.sentByUserId,
         broadcastContent: {
           subject: data.subject,
           heading: data.heading ?? null,
@@ -384,7 +404,7 @@ export class ResendEmailProvider implements IEmailService {
           );
 
           const headers: Record<string, string> = {
-            'X-Dove-Email-Type': 'CUSTOM_BROADCAST',
+            'X-Dove-Email-Type': item.emailType || 'CUSTOM_BROADCAST',
           };
           if (item.churchId) headers['X-Dove-Church-Id'] = item.churchId;
           if (item.personId) headers['X-Dove-Person-Id'] = item.personId;
@@ -434,11 +454,15 @@ export class ResendEmailProvider implements IEmailService {
                 } else {
                   totalSent++;
                   await this.logEmailSend(resObj.id, {
-                    emailType: 'CUSTOM_BROADCAST',
+                    emailType: item.emailType || 'CUSTOM_BROADCAST',
                     churchId: item.churchId,
+                    recipientEmail: item.recipientEmail,
+                    recipientName: item.recipientName,
+                    subject: item.subject,
                     personId: item.personId,
                     userId: item.userId,
                     registrationId: item.registrationId,
+                    sentByUserId: item.sentByUserId,
                     broadcastContent: {
                       subject: item.subject,
                       heading: item.heading ?? null,

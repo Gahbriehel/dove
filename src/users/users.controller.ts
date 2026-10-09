@@ -63,6 +63,7 @@ export class UsersController {
   async create(
     @Body() dto: CreateUserDto,
     @CurrentUser('churchId') userChurchId: string,
+    @CurrentUser('sub') currentUserId: string,
   ) {
     const roleName = dto.role ?? 'ADMIN';
     const role = await this.rolesService.findByName(roleName);
@@ -101,6 +102,7 @@ export class UsersController {
         temporaryPassword: dto.password,
         churchName: church?.name,
         loginUrl,
+        sentByUserId: currentUserId,
       })
       .catch((error) => {
         this.logger.error(

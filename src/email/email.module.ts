@@ -34,7 +34,7 @@ import { ResendWebhookController } from './webhooks/resend-webhook.controller';
         ) {
           return new ResendEmailProvider(configService, prisma);
         }
-        return new ConsoleEmailProvider();
+        return new ConsoleEmailProvider(prisma);
       },
       inject: [ConfigService, PrismaService],
     },

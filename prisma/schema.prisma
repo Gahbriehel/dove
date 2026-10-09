@@ -323,12 +323,21 @@ model EmailSendLog {
   resendEmailId    String   @unique @map("resend_email_id") @db.VarChar(255)
   emailType        String   @map("email_type") @db.VarChar(50)
   churchId         String?  @map("church_id")
+  recipientEmail   String?  @map("recipient_email") @db.VarChar(255)
+  recipientName    String?  @map("recipient_name") @db.VarChar(255)
+  subject          String?  @db.VarChar(255)
   personId         String?  @map("person_id")
   userId           String?  @map("user_id")
   registrationId   String?  @map("registration_id") @db.VarChar(255)
+  sentByUserId     String?  @map("sent_by_user_id")
   broadcastContent Json?    @map("broadcast_content")
   createdAt        DateTime @default(now()) @map("created_at")
 
+  @@index([churchId])
+  @@index([churchId, createdAt])
+  @@index([emailType])
+  @@index([recipientEmail])
+  @@index([sentByUserId])
   @@map("email_send_logs")
 }
 

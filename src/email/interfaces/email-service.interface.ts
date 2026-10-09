@@ -18,6 +18,7 @@ export interface RegistrationConfirmationEmailData {
   churchId?: string;
   personId?: string;
   registrationId?: string;
+  sentByUserId?: string;
 }
 
 export interface AdminWelcomeEmailData {
@@ -28,6 +29,7 @@ export interface AdminWelcomeEmailData {
   churchName?: string;
   churchId?: string;
   userId?: string;
+  sentByUserId?: string;
 }
 
 export interface CustomEmailData {
@@ -49,10 +51,12 @@ export interface CustomEmailData {
   teamName?: string;
   teamColor?: string;
   imageUrl?: string;
+  emailType?: string;
   churchId?: string;
   personId?: string;
   userId?: string;
   registrationId?: string;
+  sentByUserId?: string;
 }
 
 export interface BounceAdminAlertEmailData {
