@@ -18,6 +18,14 @@ enum MembershipStatus {
   MEMBER
   WORKER
   LEADER
+  PASTOR
+}
+
+enum FollowUpStatus {
+  PENDING
+  IN_PROGRESS
+  CONVERTED
+  INACTIVE
 }
 
 enum EventCategory {
@@ -67,6 +75,7 @@ model Church {
   users              User[]
   people             Person[]
   events             Event[]
+  departments        Department[]
   contactSubmissions ContactSubmission[]
   birthdayGreetings  BirthdayGreeting[]
 
@@ -141,29 +150,36 @@ model RefreshToken {
 }
 
 model Person {
-  id                String              @id @default(uuid())
-  churchId          String              @map("church_id")
-  firstName         String              @map("first_name") @db.VarChar(100)
-  lastName          String              @map("last_name") @db.VarChar(100)
-  email             String?             @db.VarChar(255)
-  phone             String?             @db.VarChar(50)
-  gender            Gender?
-  membershipStatus  MembershipStatus    @default(VISITOR) @map("membership_status")
-  dateOfBirth       DateTime?           @map("date_of_birth") @db.Date
-  address           String?             @db.Text
-  emailStatus       EmailDeliveryStatus @default(DELIVERABLE) @map("email_status")
-  emailBounceReason String?             @map("email_bounce_reason") @db.Text
-  emailBouncedAt    DateTime?           @map("email_bounced_at")
-  createdAt         DateTime            @default(now()) @map("created_at")
-  updatedAt         DateTime            @updatedAt @map("updated_at")
+  id                    String              @id @default(uuid())
+  churchId              String              @map("church_id")
+  firstName             String              @map("first_name") @db.VarChar(100)
+  lastName              String              @map("last_name") @db.VarChar(100)
+  email                 String?             @db.VarChar(255)
+  phone                 String?             @db.VarChar(50)
+  gender                Gender?
+  membershipStatus      MembershipStatus    @default(VISITOR) @map("membership_status")
+  dateOfBirth           DateTime?           @map("date_of_birth") @db.Date
+  address               String?             @db.Text
+  emailStatus           EmailDeliveryStatus @default(DELIVERABLE) @map("email_status")
+  emailBounceReason     String?             @map("email_bounce_reason") @db.Text
+  emailBouncedAt        DateTime?           @map("email_bounced_at")
+  profileToken          String?             @unique @map("profile_token") @db.VarChar(255)
+  profileTokenExpiresAt DateTime?           @map("profile_token_expires_at")
+  followUpStatus        FollowUpStatus      @default(PENDING) @map("follow_up_status")
+  followUpNotes         String?             @map("follow_up_notes") @db.Text
+  lastFollowUpAt        DateTime?           @map("last_follow_up_at")
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
 
-  church            Church             @relation(fields: [churchId], references: [id], onDelete: Cascade)
-  registrations     Registration[]
-  birthdayGreetings BirthdayGreeting[]
+  church                Church                 @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  registrations         Registration[]
+  birthdayGreetings     BirthdayGreeting[]
+  departmentMemberships DepartmentMembership[]
 
   @@index([churchId])
   @@index([email])
   @@index([phone])
+  @@index([followUpStatus])
   @@map("people")
 }
 
@@ -387,4 +403,36 @@ model BirthdayGreeting {
   @@index([personId])
   @@index([sentByUserId])
   @@map("birthday_greetings")
+}
+
+model Department {
+  id          String   @id @default(uuid())
+  churchId    String   @map("church_id")
+  name        String   @db.VarChar(100)
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  church  Church                 @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  members DepartmentMembership[]
+
+  @@unique([churchId, name])
+  @@index([churchId])
+  @@map("departments")
+}
+
+model DepartmentMembership {
+  id           String   @id @default(uuid())
+  personId     String   @map("person_id")
+  departmentId String   @map("department_id")
+  role         String?  @db.VarChar(50)
+  joinedAt     DateTime @default(now()) @map("joined_at")
+
+  person     Person     @relation(fields: [personId], references: [id], onDelete: Cascade)
+  department Department @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+
+  @@unique([personId, departmentId])
+  @@index([personId])
+  @@index([departmentId])
+  @@map("department_memberships")
 }

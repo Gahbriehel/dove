@@ -1,17 +1,27 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
-import { Gender, MembershipStatus, Prisma } from '@prisma/client';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import {
+  FollowUpStatus,
+  Gender,
+  MembershipStatus,
+  Prisma,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
 import { QueryPersonDto } from './dto/query-person.dto';
+import { PromotePersonDto } from './dto/promote-person.dto';
 
 @Injectable()
 export class PeopleService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createPersonDto: CreatePersonDto, userChurchId?: string) {
-    const { dateOfBirth, ...rest } = createPersonDto;
+    const { dateOfBirth, lastFollowUpAt, ...rest } = createPersonDto;
 
     const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
@@ -27,6 +37,9 @@ export class PeopleService {
         ...rest,
         churchId,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+        ...(lastFollowUpAt !== undefined && {
+          lastFollowUpAt: lastFollowUpAt ? new Date(lastFollowUpAt) : null,
+        }),
       },
     });
   }
@@ -35,7 +48,8 @@ export class PeopleService {
     query: QueryPersonDto,
     targetChurchId: string,
   ): Prisma.PersonWhereInput {
-    const { membershipStatus, gender, search } = query;
+    const { membershipStatus, gender, search, departmentId, followUpStatus } =
+      query;
 
     const where: Prisma.PersonWhereInput = {
       churchId: targetChurchId,
@@ -47,6 +61,18 @@ export class PeopleService {
 
     if (gender) {
       where.gender = gender;
+    }
+
+    if (departmentId) {
+      where.departmentMemberships = {
+        some: {
+          departmentId,
+        },
+      };
+    }
+
+    if (followUpStatus) {
+      where.followUpStatus = followUpStatus as FollowUpStatus;
     }
 
     if (search) {
@@ -77,6 +103,7 @@ export class PeopleService {
       membersCount,
       workersCount,
       leadersCount,
+      pastorsCount,
       maleCount,
       femaleCount,
       otherGenderCount,
@@ -90,6 +117,13 @@ export class PeopleService {
         include: {
           church: {
             select: { id: true, name: true, slug: true },
+          },
+          departmentMemberships: {
+            include: {
+              department: {
+                select: { id: true, name: true, description: true },
+              },
+            },
           },
           registrations: {
             include: {
@@ -142,6 +176,12 @@ export class PeopleService {
         },
       }),
       this.prisma.person.count({
+        where: {
+          churchId: targetChurchId,
+          membershipStatus: MembershipStatus.PASTOR,
+        },
+      }),
+      this.prisma.person.count({
         where: { churchId: targetChurchId, gender: Gender.MALE },
       }),
       this.prisma.person.count({
@@ -161,10 +201,20 @@ export class PeopleService {
         (reg) => reg.attendance !== null,
       ).length;
 
+      const departments =
+        person.departmentMemberships?.map((dm) => ({
+          id: dm.department.id,
+          name: dm.department.name,
+          description: dm.department.description,
+          role: dm.role,
+          joinedAt: dm.joinedAt,
+        })) || [];
+
       return {
         ...person,
         eventsRegisteredCount,
         eventsAttendedCount,
+        departments,
       };
     });
 
@@ -174,15 +224,21 @@ export class PeopleService {
         total,
         page,
         limit,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
       stats: {
-        total: visitorsCount + membersCount + workersCount + leadersCount,
+        total:
+          visitorsCount +
+          membersCount +
+          workersCount +
+          leadersCount +
+          pastorsCount,
         membership: {
           visitors: visitorsCount,
           members: membersCount,
           workers: workersCount,
           leaders: leadersCount,
+          pastors: pastorsCount,
         },
         gender: {
           male: maleCount,
@@ -232,6 +288,14 @@ export class PeopleService {
         church: {
           select: { id: true, name: true, slug: true },
         },
+        departmentMemberships: {
+          include: {
+            department: {
+              select: { id: true, name: true, description: true },
+            },
+          },
+          orderBy: { joinedAt: 'asc' },
+        },
         registrations: {
           include: {
             event: {
@@ -265,10 +329,20 @@ export class PeopleService {
       (reg) => reg.attendance !== null,
     ).length;
 
+    const departments =
+      person.departmentMemberships?.map((dm) => ({
+        id: dm.department.id,
+        name: dm.department.name,
+        description: dm.department.description,
+        role: dm.role,
+        joinedAt: dm.joinedAt,
+      })) || [];
+
     return {
       ...person,
       eventsRegisteredCount,
       eventsAttendedCount,
+      departments,
     };
   }
 
@@ -279,7 +353,7 @@ export class PeopleService {
   ) {
     await this.findOne(id, userChurchId);
 
-    const { dateOfBirth, ...rest } = updatePersonDto;
+    const { dateOfBirth, lastFollowUpAt, ...rest } = updatePersonDto;
 
     const data: Prisma.PersonUpdateInput = { ...rest };
 
@@ -287,9 +361,77 @@ export class PeopleService {
       data.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
     }
 
+    if (lastFollowUpAt !== undefined) {
+      data.lastFollowUpAt = lastFollowUpAt ? new Date(lastFollowUpAt) : null;
+    }
+
     return this.prisma.person.update({
       where: { id },
       data,
+    });
+  }
+
+  async promote(id: string, dto: PromotePersonDto, userChurchId?: string) {
+    const targetChurchId =
+      userChurchId || (await this.prisma.getDefaultChurchId());
+
+    const person = await this.prisma.person.findFirst({
+      where: { id, churchId: targetChurchId },
+      include: {
+        departmentMemberships: {
+          include: { department: true },
+        },
+      },
+    });
+
+    if (!person) {
+      throw new NotFoundException(`Person with ID "${id}" not found`);
+    }
+
+    const hasEmail = person.email && person.email.trim() !== '';
+    const hasPhone = person.phone && person.phone.trim() !== '';
+    if (!hasEmail && !hasPhone) {
+      throw new BadRequestException(
+        'Person must have at least an email address or phone number on record before being promoted',
+      );
+    }
+
+    const hierarchy: Record<MembershipStatus, number> = {
+      [MembershipStatus.VISITOR]: 1,
+      [MembershipStatus.MEMBER]: 2,
+      [MembershipStatus.WORKER]: 3,
+      [MembershipStatus.LEADER]: 4,
+      [MembershipStatus.PASTOR]: 5,
+    };
+
+    const currentRank = hierarchy[person.membershipStatus] ?? 0;
+    const targetRank = hierarchy[dto.membershipStatus] ?? 0;
+
+    if (targetRank <= currentRank) {
+      throw new BadRequestException(
+        `Cannot promote person from ${person.membershipStatus} to ${dto.membershipStatus}. The promote endpoint is only for upward progression.`,
+      );
+    }
+
+    const data: Prisma.PersonUpdateInput = {
+      membershipStatus: dto.membershipStatus,
+    };
+
+    if (
+      person.followUpStatus === FollowUpStatus.PENDING ||
+      person.followUpStatus === FollowUpStatus.IN_PROGRESS
+    ) {
+      data.followUpStatus = FollowUpStatus.CONVERTED;
+    }
+
+    return this.prisma.person.update({
+      where: { id },
+      data,
+      include: {
+        departmentMemberships: {
+          include: { department: true },
+        },
+      },
     });
   }
 

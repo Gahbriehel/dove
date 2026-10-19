@@ -1,6 +1,6 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { Gender, MembershipStatus } from '@prisma/client';
+import { FollowUpStatus, Gender, MembershipStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PeopleService } from './people.service';
 
@@ -132,6 +132,7 @@ describe('PeopleService', () => {
         .mockResolvedValueOnce(1) // members
         .mockResolvedValueOnce(0) // workers
         .mockResolvedValueOnce(0) // leaders
+        .mockResolvedValueOnce(0) // pastors
         .mockResolvedValueOnce(1) // male
         .mockResolvedValueOnce(0) // female
         .mockResolvedValueOnce(0) // other
@@ -248,6 +249,86 @@ describe('PeopleService', () => {
       expect(prismaMock.person.delete).toHaveBeenCalledWith({
         where: { id: 'person-1' },
       });
+    });
+  });
+
+  describe('promote', () => {
+    it('should promote a person to member and convert follow-up status', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        membershipStatus: MembershipStatus.VISITOR,
+        followUpStatus: FollowUpStatus.PENDING,
+        email: 'john@example.com',
+        phone: null,
+      });
+      prismaMock.person.update.mockResolvedValue({
+        id: 'person-1',
+        membershipStatus: MembershipStatus.MEMBER,
+        followUpStatus: FollowUpStatus.CONVERTED,
+      });
+
+      const result = await service.promote(
+        'person-1',
+        { membershipStatus: MembershipStatus.MEMBER },
+        'church-1',
+      );
+
+      expect(result.membershipStatus).toBe(MembershipStatus.MEMBER);
+      expect(prismaMock.person.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'person-1' },
+          data: {
+            membershipStatus: MembershipStatus.MEMBER,
+            followUpStatus: FollowUpStatus.CONVERTED,
+          },
+        }),
+      );
+    });
+
+    it('should throw BadRequestException if person has neither email nor phone', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        membershipStatus: MembershipStatus.VISITOR,
+        email: null,
+        phone: '',
+      });
+
+      await expect(
+        service.promote(
+          'person-1',
+          { membershipStatus: MembershipStatus.MEMBER },
+          'church-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw BadRequestException if promotion is downward or equal rank', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        membershipStatus: MembershipStatus.WORKER,
+        email: 'worker@example.com',
+        phone: null,
+      });
+
+      await expect(
+        service.promote(
+          'person-1',
+          { membershipStatus: MembershipStatus.MEMBER },
+          'church-1',
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('should throw NotFoundException if person not found', async () => {
+      prismaMock.person.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.promote(
+          'person-missing',
+          { membershipStatus: MembershipStatus.MEMBER },
+          'church-1',
+        ),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

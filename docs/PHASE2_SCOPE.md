@@ -50,11 +50,13 @@ a link on screen during services. Anyone can visit it — no login required.
 - Gender
 - Date of birth
 - Address
+- `membershipStatus` (`VISITOR`, `MEMBER`, `WORKER`, `LEADER`, `PASTOR`)
+- Department memberships (if `WORKER`, prompt for department; optional for `LEADER` & `PASTOR`)
 
 ### What People Cannot Change
 
-- `membershipStatus` — admin-controlled only
 - `churchId` — always inferred from the application context
+- System administration permissions — `Person` records represent congregants/attendees and are decoupled from admin `User` accounts; selecting `LEADER` or `PASTOR` never grants administrative system credentials. Admins maintain full moderation over department rosters and can adjust or remove anyone who doesn't belong.
 
 ---
 
@@ -247,8 +249,7 @@ quiet — a key input to the follow-up workflow.
 
 ## What Is Out of Scope for Phase 2
 
-- Member self-registration for departments (admin assigns departments)
-- Member-initiated status promotion
+- Member access to admin system credentials (remains admin only)
 - Giving / financial records
 - Devotionals, sermons, prayer requests (Phase 3)
 - Multi-church support (Phase 4)

@@ -20,8 +20,10 @@ import {
 import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
+import { Roles } from '../common/decorators/roles.decorator';
 import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
 import { CreatePersonDto } from './dto/create-person.dto';
+import { PromotePersonDto } from './dto/promote-person.dto';
 import { QueryPersonDto } from './dto/query-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
 import { PeopleService } from './people.service';
@@ -111,6 +113,25 @@ export class PeopleController {
     @CurrentUser('churchId') userChurchId: string,
   ) {
     return this.peopleService.update(id, updatePersonDto, userChurchId);
+  }
+
+  @Post(':id/promote')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Person promoted successfully')
+  @ApiOperation({ summary: 'Promote a person to a higher membership status' })
+  @ApiResponse({ status: 200, description: 'Person promoted successfully' })
+  @ApiResponse({
+    status: 400,
+    description: 'Incomplete profile or invalid progression',
+  })
+  @ApiResponse({ status: 404, description: 'Person not found' })
+  async promote(
+    @Param('id') id: string,
+    @Body() promotePersonDto: PromotePersonDto,
+    @CurrentUser('churchId') userChurchId: string,
+  ) {
+    return this.peopleService.promote(id, promotePersonDto, userChurchId);
   }
 
   @Delete(':id')

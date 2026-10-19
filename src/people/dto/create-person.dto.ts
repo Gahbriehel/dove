@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Gender, MembershipStatus } from '@prisma/client';
+import { FollowUpStatus, Gender, MembershipStatus } from '@prisma/client';
 import {
   IsDateString,
   IsEmail,
@@ -67,4 +67,23 @@ export class CreatePersonDto {
   @IsString()
   @IsOptional()
   address?: string;
+
+  @ApiPropertyOptional({
+    enum: FollowUpStatus,
+    default: FollowUpStatus.PENDING,
+    description: 'Pastoral follow-up status for visitors',
+  })
+  @IsEnum(FollowUpStatus)
+  @IsOptional()
+  followUpStatus?: FollowUpStatus;
+
+  @ApiPropertyOptional({ description: 'Pastoral follow-up notes' })
+  @IsString()
+  @IsOptional()
+  followUpNotes?: string;
+
+  @ApiPropertyOptional({ description: 'Timestamp of last follow-up contact' })
+  @IsDateString()
+  @IsOptional()
+  lastFollowUpAt?: string;
 }

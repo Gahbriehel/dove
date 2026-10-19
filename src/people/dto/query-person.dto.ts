@@ -39,6 +39,22 @@ export class QueryPersonDto {
   gender?: Gender;
 
   @ApiPropertyOptional({
+    description: 'Filter by department ID',
+  })
+  @IsUUID()
+  @IsOptional()
+  departmentId?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by visitor follow-up status (PENDING, IN_PROGRESS, CONVERTED, INACTIVE)',
+  })
+  @Transform(toUpperCase)
+  @IsString()
+  @IsOptional()
+  followUpStatus?: string;
+
+  @ApiPropertyOptional({
     description: 'Search by first name, last name, email, or phone',
   })
   @IsString()
