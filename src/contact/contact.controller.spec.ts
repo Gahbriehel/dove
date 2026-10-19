@@ -73,7 +73,7 @@ describe('ContactController', () => {
       type: 'inquiry',
       name: 'Jane Doe',
       email: 'jane.doe@example.com',
-      category: 'Visiting This Sunday',
+      category: 'Directions',
       message: 'What time is the service?',
     };
 

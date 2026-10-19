@@ -1,8 +1,8 @@
-# Entity Relationship Design (Phase 1)
+# Entity Relationship Design
 
 ## Purpose
 
-This document defines the database structure for Phase 1 (Church Events Platform).
+This document defines the database structure for the Dove platform, covering Phase 1 and Phase 2.
 
 The database is intentionally designed to evolve into a complete Church Management System without requiring breaking schema changes.
 
@@ -95,15 +95,55 @@ Relationships
 
 - Belongs to Church
 - Has many Registrations
+- Has many Department Memberships (Phase 2)
 
-Future Relationships (Phase 2+)
+Phase 2 Fields Added
 
-- Departments & Department Memberships (People belong to one or more Departments; returned in GET /people and profile endpoints)
-- Giving
-- Attendance
-- Small Groups
+The following fields are added to `Person` in Phase 2. No existing fields are changed.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `profileToken` | String? | Short-lived token for magic link auth |
+| `profileTokenExpiresAt` | DateTime? | Token expiry — token is invalid after this time |
+| `followUpNotes` | String? | Free text notes from the pastoral/follow-up team |
+| `lastFollowUpAt` | DateTime? | When the person was last contacted |
+| `followUpStatus` | Enum | `PENDING \| IN_PROGRESS \| CONVERTED \| INACTIVE` |
+
+The `profileToken` pattern mirrors `Registration.token` — already proven in Phase 1.
 
 ---
+
+## Departments (Phase 2)
+
+Represents a ministry or serving unit within the church.
+
+Examples
+
+- Choir
+- Media
+- Ushers
+- Children's Ministry
+
+Relationships
+
+- Belongs to Church
+- Has many Department Memberships
+
+---
+
+## DepartmentMembership (Phase 2)
+
+Many-to-many join between People and Departments.
+
+Contains
+
+- `personId`
+- `departmentId`
+- `joinedAt`
+- `role` (optional — e.g., "Head", "Member")
+
+---
+
 
 ## Events
 
@@ -181,24 +221,21 @@ Belongs to
 
 ---
 
-# Future Tables (Not MVP)
+# Future Tables (Phase 3+)
 
-Accounts
+The following tables are not in Phase 1 or Phase 2 scope.
+They are listed here to confirm the schema was designed with them in mind.
 
-Departments
-
-Department Members
+Giving / Offerings
 
 Prayer Requests
 
-Messages
-
 Devotionals
 
-Offerings
+Sermons
 
-Service Attendance
+Service Attendance (distinct from event attendance)
 
-Notifications
+Push Notification Logs
 
 Audit Logs

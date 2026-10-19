@@ -226,9 +226,9 @@ See [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) for full design rationale.
 
 | Phase | Focus |
 |---|---|
-| **Phase 1** (now) | Church Events Platform — manage Youth Conference |
-| **Phase 2** | Church Relationship Platform — member profiles, departments, follow-up |
-| **Phase 3** | Church Lifestyle Platform — mobile app, giving, sermons, devotional |
+| **Phase 1** ✅ | Church Events Platform — manage Youth Conference |
+| **Phase 2** 🚧 | Church Relationship Platform — self-service member profiles, magic link auth, PWA introduction, visitor follow-up |
+| **Phase 3** | Church Lifestyle Platform — PWA growth (devotionals, sermons, giving, notifications) |
 | **Phase 4** | Church Operating System — multi-church, finance, analytics |
 
 See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for details.
@@ -242,6 +242,7 @@ See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for details.
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Design philosophy and architectural decisions |
 | [`docs/ERD.md`](./docs/ERD.md) | Entity relationship diagram |
 | [`docs/MVP_SCOPE.md`](./docs/MVP_SCOPE.md) | What's in and out of scope for Phase 1 |
+| [`docs/PHASE2_SCOPE.md`](./docs/PHASE2_SCOPE.md) | Phase 2 detailed scope — profiles, magic link, PWA, follow-up |
 | [`docs/ROADMAP.md`](./docs/ROADMAP.md) | Phase-by-phase product roadmap |
 | [`docs/PERMISSIONS.Md`](./docs/PERMISSIONS.Md) | Role-based access control reference |
 | [`docs/CODING_STANDARDS.md`](./docs/CODING_STANDARDS.md) | Code conventions and standards |

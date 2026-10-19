@@ -7,6 +7,7 @@ import {
   IsIn,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ALL_CONTACT_CATEGORIES } from '../constants/contact-categories.constant';
 
 export class CreateContactSubmissionDto {
   @ApiProperty({
@@ -48,6 +49,7 @@ export class CreateContactSubmissionDto {
 
   @ApiProperty({
     description: 'Specific category selection dependent on type',
+    enum: ALL_CONTACT_CATEGORIES,
     example: 'Healing & Health',
   })
   @IsString()

@@ -12,24 +12,20 @@ import { ActiveUserData } from '../common/decorators/current-user.decorator';
 import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
 import * as crypto from 'crypto';
 
+import {
+  PRAYER_CATEGORIES,
+  INQUIRY_CATEGORIES,
+} from './constants/contact-categories.constant';
+
 @Injectable()
 export class ContactService {
   private readonly logger = new Logger(ContactService.name);
 
-  private readonly permittedPrayerCategories = [
-    'Healing & Health',
-    'Family & Marriage',
-    'Financial Breakthrough',
-    'Spiritual Growth',
-    'General Prayer',
-  ];
+  private readonly permittedPrayerCategories: readonly string[] =
+    PRAYER_CATEGORIES;
 
-  private readonly permittedInquiryCategories = [
-    'Visiting This Sunday',
-    'Small Groups / Ministries',
-    'Volunteering',
-    'General Question',
-  ];
+  private readonly permittedInquiryCategories: readonly string[] =
+    INQUIRY_CATEGORIES;
 
   constructor(private readonly prisma: PrismaService) {}
 

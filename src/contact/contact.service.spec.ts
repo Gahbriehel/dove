@@ -113,7 +113,7 @@ describe('ContactService', () => {
         type: 'inquiry',
         name: 'John Doe',
         email: 'john.doe@example.com',
-        category: 'Visiting This Sunday',
+        category: 'Directions',
         message: 'Where is the main entrance?',
         isPrivate: true, // Should be normalized to false
       };
@@ -141,8 +141,8 @@ describe('ContactService', () => {
         type: 'inquiry',
         name: 'John Doe',
         email: 'john.doe@example.com',
-        category: 'Volunteering',
-        message: 'How can I volunteer?',
+        category: 'Partnership & Giving',
+        message: 'How can I partner with the church?',
       };
 
       const result = await service.create(dto, 'grace-church');
@@ -160,8 +160,8 @@ describe('ContactService', () => {
         type: 'inquiry',
         name: 'John Doe',
         email: 'john.doe@example.com',
-        category: 'Volunteering',
-        message: 'How can I volunteer?',
+        category: 'Pastoral Counseling',
+        message: 'I would like pastoral counseling',
       };
 
       await expect(service.create(dto, 'unknown-church')).rejects.toThrow(

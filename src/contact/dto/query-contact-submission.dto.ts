@@ -1,4 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ALL_CONTACT_CATEGORIES } from '../constants/contact-categories.constant';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
@@ -27,7 +28,10 @@ export class QueryContactSubmissionDto {
   @IsOptional()
   type?: string;
 
-  @ApiPropertyOptional({ description: 'Filter by category name' })
+  @ApiPropertyOptional({
+    description: 'Filter by category name',
+    enum: ALL_CONTACT_CATEGORIES,
+  })
   @IsString()
   @IsOptional()
   category?: string;
