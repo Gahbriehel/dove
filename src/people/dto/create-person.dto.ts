@@ -70,8 +70,8 @@ export class CreatePersonDto {
 
   @ApiPropertyOptional({
     enum: FollowUpStatus,
-    default: FollowUpStatus.PENDING,
-    description: 'Pastoral follow-up status for visitors',
+    description:
+      'Pastoral follow-up status for visitors (defaults to PENDING for visitors, null for non-visitors)',
   })
   @IsEnum(FollowUpStatus)
   @IsOptional()

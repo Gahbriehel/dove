@@ -165,7 +165,7 @@ model Person {
   emailBouncedAt        DateTime?           @map("email_bounced_at")
   profileToken          String?             @unique @map("profile_token") @db.VarChar(255)
   profileTokenExpiresAt DateTime?           @map("profile_token_expires_at")
-  followUpStatus        FollowUpStatus      @default(PENDING) @map("follow_up_status")
+  followUpStatus        FollowUpStatus?     @map("follow_up_status")
   followUpNotes         String?             @map("follow_up_notes") @db.Text
   lastFollowUpAt        DateTime?           @map("last_follow_up_at")
   createdAt             DateTime            @default(now()) @map("created_at")

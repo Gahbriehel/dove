@@ -32,10 +32,22 @@ export class PeopleService {
       throw new NotFoundException(`Church with ID "${churchId}" not found`);
     }
 
+    const membershipStatus =
+      createPersonDto.membershipStatus ?? MembershipStatus.VISITOR;
+
+    const followUpStatus =
+      createPersonDto.followUpStatus !== undefined
+        ? createPersonDto.followUpStatus
+        : membershipStatus === MembershipStatus.VISITOR
+          ? FollowUpStatus.PENDING
+          : null;
+
     return this.prisma.person.create({
       data: {
         ...rest,
         churchId,
+        membershipStatus,
+        followUpStatus,
         dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
         ...(lastFollowUpAt !== undefined && {
           lastFollowUpAt: lastFollowUpAt ? new Date(lastFollowUpAt) : null,
@@ -351,7 +363,7 @@ export class PeopleService {
     updatePersonDto: UpdatePersonDto,
     userChurchId?: string,
   ) {
-    await this.findOne(id, userChurchId);
+    const existing = await this.findOne(id, userChurchId);
 
     const { dateOfBirth, lastFollowUpAt, ...rest } = updatePersonDto;
 
@@ -363,6 +375,15 @@ export class PeopleService {
 
     if (lastFollowUpAt !== undefined) {
       data.lastFollowUpAt = lastFollowUpAt ? new Date(lastFollowUpAt) : null;
+    }
+
+    if (
+      updatePersonDto.followUpStatus === undefined &&
+      updatePersonDto.membershipStatus &&
+      updatePersonDto.membershipStatus !== MembershipStatus.VISITOR &&
+      existing.followUpStatus === FollowUpStatus.PENDING
+    ) {
+      data.followUpStatus = null;
     }
 
     return this.prisma.person.update({

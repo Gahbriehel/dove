@@ -87,7 +87,42 @@ describe('PeopleService', () => {
           email: 'john.doe@example.com',
           gender: Gender.MALE,
           churchId: 'church-1',
+          membershipStatus: MembershipStatus.VISITOR,
+          followUpStatus: FollowUpStatus.PENDING,
           dateOfBirth: new Date('1995-05-15'),
+        },
+      });
+    });
+
+    it('should create a non-visitor with followUpStatus null when not specified', async () => {
+      prismaMock.church.findUnique.mockResolvedValue({ id: 'church-1' });
+      prismaMock.person.create.mockResolvedValue({
+        id: 'person-2',
+        churchId: 'church-1',
+        firstName: 'Jane',
+        lastName: 'Member',
+        membershipStatus: MembershipStatus.MEMBER,
+        followUpStatus: null,
+      });
+
+      const result = await service.create(
+        {
+          firstName: 'Jane',
+          lastName: 'Member',
+          membershipStatus: MembershipStatus.MEMBER,
+        },
+        'church-1',
+      );
+
+      expect(result.id).toBe('person-2');
+      expect(prismaMock.person.create).toHaveBeenCalledWith({
+        data: {
+          firstName: 'Jane',
+          lastName: 'Member',
+          churchId: 'church-1',
+          membershipStatus: MembershipStatus.MEMBER,
+          followUpStatus: null,
+          dateOfBirth: null,
         },
       });
     });
@@ -231,6 +266,33 @@ describe('PeopleService', () => {
         data: {
           firstName: 'Johnny',
           dateOfBirth: new Date('1990-01-01'),
+        },
+      });
+    });
+
+    it('should clear PENDING followUpStatus when updating to a non-visitor membership status without explicit followUpStatus', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        membershipStatus: MembershipStatus.VISITOR,
+        followUpStatus: FollowUpStatus.PENDING,
+      });
+      prismaMock.person.update.mockResolvedValue({
+        id: 'person-1',
+        membershipStatus: MembershipStatus.MEMBER,
+        followUpStatus: null,
+      });
+
+      await service.update(
+        'person-1',
+        { membershipStatus: MembershipStatus.MEMBER },
+        'church-1',
+      );
+
+      expect(prismaMock.person.update).toHaveBeenCalledWith({
+        where: { id: 'person-1' },
+        data: {
+          membershipStatus: MembershipStatus.MEMBER,
+          followUpStatus: null,
         },
       });
     });
