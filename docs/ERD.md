@@ -107,7 +107,7 @@ The following fields are added to `Person` in Phase 2. No existing fields are ch
 | `profileTokenExpiresAt` | DateTime? | Token expiry — token is invalid after this time |
 | `followUpNotes` | String? | Free text notes from the pastoral/follow-up team |
 | `lastFollowUpAt` | DateTime? | When the person was last contacted |
-| `followUpStatus` | Enum | `PENDING \| IN_PROGRESS \| CONVERTED \| INACTIVE` |
+| `followUpStatus` | Enum? | `PENDING \| IN_PROGRESS \| CONVERTED \| INACTIVE` (defaults to PENDING for visitors, null for non-visitors) |
 
 The `profileToken` pattern mirrors `Registration.token` — already proven in Phase 1.
 

@@ -247,6 +247,8 @@ See [`docs/ROADMAP.md`](./docs/ROADMAP.md) for details.
 | [`docs/PERMISSIONS.Md`](./docs/PERMISSIONS.Md) | Role-based access control reference |
 | [`docs/CODING_STANDARDS.md`](./docs/CODING_STANDARDS.md) | Code conventions and standards |
 | [`docs/API_CONTRACT.md`](./docs/API_CONTRACT.md) | API contract and versioning policy |
+| [`docs/FRONTEND_ADMIN_GUIDE.md`](./docs/FRONTEND_ADMIN_GUIDE.md) | Admin dashboard frontend integration guide |
+| [`docs/FRONTEND_PWA_GUIDE.md`](./docs/FRONTEND_PWA_GUIDE.md) | Member PWA portal frontend integration guide |
 | [`docs/DECISIONS.md`](./docs/DECISIONS.md) | Architecture decision records (ADRs) |
 
 ---

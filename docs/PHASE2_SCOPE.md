@@ -174,18 +174,18 @@ Three fields are added to `Person` (no new table required):
 |---|---|---|
 | `followUpNotes` | String? | Free text — pastoral notes visible only to admins |
 | `lastFollowUpAt` | DateTime? | Timestamp of last pastoral contact |
-| `followUpStatus` | Enum | See below |
+| `followUpStatus` | Enum? | Nullable; defaults to `PENDING` for visitors, `null` for non-visitors |
 
 ### FollowUpStatus Enum
 
 | Value | Meaning |
 |---|---|
-| `PENDING` | Visitor has not been contacted yet (default) |
+| `PENDING` | Visitor has not been contacted yet (default for visitors) |
 | `IN_PROGRESS` | Follow-up has started |
 | `CONVERTED` | Visitor has become a member |
 | `INACTIVE` | No further follow-up needed |
 
-These fields are admin-only — not exposed via the public profile endpoints.
+These fields are admin-only — not exposed via the public profile endpoints. Non-visitors (Members, Workers, Leaders, Pastors) have `null` for `followUpStatus` unless explicitly set or converted from a visitor.
 
 ---
 
