@@ -28,6 +28,22 @@ enum FollowUpStatus {
   INACTIVE
 }
 
+enum CheckInReason {
+  ABSENTEEISM
+  ILLNESS
+  BEREAVEMENT
+  WORKER_WELFARE
+  DISCIPLESHIP
+  FAMILY_SUPPORT
+  GENERAL_CHECK_IN
+}
+
+enum CheckInStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
 enum EventCategory {
   GENERAL
   CONFERENCE
@@ -78,6 +94,7 @@ model Church {
   departments        Department[]
   contactSubmissions ContactSubmission[]
   birthdayGreetings  BirthdayGreeting[]
+  pastoralCheckIns   PastoralCheckIn[]
 
   @@map("churches")
 }
@@ -102,6 +119,8 @@ model User {
   userRoles             UserRole[]
   refreshTokens         RefreshToken[]
   sentBirthdayGreetings BirthdayGreeting[] @relation("SentBirthdayGreetings")
+  createdCheckIns       PastoralCheckIn[]  @relation("CheckInCreatedBy")
+  assignedCheckIns      PastoralCheckIn[]  @relation("CheckInAssignedTo")
 
   @@index([churchId])
   @@map("users")
@@ -175,6 +194,7 @@ model Person {
   registrations         Registration[]
   birthdayGreetings     BirthdayGreeting[]
   departmentMemberships DepartmentMembership[]
+  pastoralCheckIns      PastoralCheckIn[]
 
   @@index([churchId])
   @@index([email])
@@ -435,4 +455,32 @@ model DepartmentMembership {
   @@index([personId])
   @@index([departmentId])
   @@map("department_memberships")
+}
+
+model PastoralCheckIn {
+  id           String        @id @default(uuid())
+  churchId     String        @map("church_id")
+  personId     String        @map("person_id")
+  createdById  String        @map("created_by_id")
+  assignedToId String?       @map("assigned_to_id")
+  reason       CheckInReason @default(GENERAL_CHECK_IN)
+  status       CheckInStatus @default(SCHEDULED)
+  scheduledFor DateTime?     @map("scheduled_for")
+  completedAt  DateTime?     @map("completed_at")
+  notes        String?       @db.Text
+  outcome      String?       @db.Text
+  createdAt    DateTime      @default(now()) @map("created_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  church     Church  @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  person     Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
+  createdBy  User    @relation("CheckInCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedTo User?   @relation("CheckInAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+
+  @@index([churchId])
+  @@index([personId])
+  @@index([status])
+  @@index([assignedToId])
+  @@index([scheduledFor])
+  @@map("pastoral_check_ins")
 }

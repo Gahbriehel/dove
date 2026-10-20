@@ -4,6 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  CheckInStatus,
   FollowUpStatus,
   Gender,
   MembershipStatus,
@@ -137,6 +138,15 @@ export class PeopleService {
               },
             },
           },
+          pastoralCheckIns: {
+            select: {
+              id: true,
+              status: true,
+              completedAt: true,
+              scheduledFor: true,
+            },
+            orderBy: { createdAt: 'desc' },
+          },
           registrations: {
             include: {
               event: {
@@ -222,11 +232,22 @@ export class PeopleService {
           joinedAt: dm.joinedAt,
         })) || [];
 
+      const completedCheckIns = (person.pastoralCheckIns ?? []).filter(
+        (c) => c.status === CheckInStatus.COMPLETED && c.completedAt !== null,
+      );
+      const lastCheckInAt =
+        completedCheckIns.length > 0 ? completedCheckIns[0].completedAt : null;
+      const hasPendingCheckIn = (person.pastoralCheckIns ?? []).some(
+        (c) => c.status === CheckInStatus.SCHEDULED,
+      );
+
       return {
         ...person,
         eventsRegisteredCount,
         eventsAttendedCount,
         departments,
+        lastCheckInAt,
+        hasPendingCheckIn,
       };
     });
 
@@ -328,6 +349,22 @@ export class PeopleService {
           },
           orderBy: { createdAt: 'desc' },
         },
+        pastoralCheckIns: {
+          include: {
+            assignedTo: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                email: true,
+              },
+            },
+            createdBy: {
+              select: { id: true, firstName: true, lastName: true },
+            },
+          },
+          orderBy: [{ scheduledFor: 'desc' }, { createdAt: 'desc' }],
+        },
       },
     });
 
@@ -355,6 +392,7 @@ export class PeopleService {
       eventsRegisteredCount,
       eventsAttendedCount,
       departments,
+      pastoralCheckIns: person.pastoralCheckIns ?? [],
     };
   }
 

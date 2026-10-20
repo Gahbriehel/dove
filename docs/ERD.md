@@ -144,6 +144,32 @@ Contains
 
 ---
 
+## PastoralCheckIn (Phase 2)
+
+Ongoing pastoral care and audit history for members, workers, and leaders.
+
+Contains
+
+- `personId` (FK -> Person)
+- `churchId` (FK -> Church)
+- `createdById` (FK -> User)
+- `assignedToId` (FK -> User, optional)
+- `reason` (Enum: `ABSENTEEISM | ILLNESS | BEREAVEMENT | WORKER_WELFARE | DISCIPLESHIP | FAMILY_SUPPORT | GENERAL_CHECK_IN`)
+- `status` (Enum: `SCHEDULED | COMPLETED | CANCELLED`)
+- `scheduledFor` (DateTime, optional)
+- `completedAt` (DateTime, optional)
+- `notes` (Text, optional)
+- `outcome` (Text, optional)
+
+Relationships
+
+- Belongs to Church
+- Belongs to Person
+- Created by User
+- Optionally assigned to User
+
+---
+
 
 ## Events
 
