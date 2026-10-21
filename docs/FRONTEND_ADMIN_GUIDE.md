@@ -313,3 +313,136 @@ When an admin calls, messages, or meets a visitor, submit updates via `PATCH /pe
 | `INACTIVE` | Gray | Inactive | Decided not to join / stopped attending |
 | `null` | — | None | Non-visitors (members, workers, pastors) |
 
+---
+
+## 6. Pastoral Check-ins & Member Care Workflow
+
+While visitor follow-up is an onboarding funnel, **Pastoral Check-ins** provide **ongoing, cyclical care with full audit history** for members, workers, and leaders (e.g. absenteeism, illness, bereavement, worker burnout).
+
+Check-ins do **not** require a separate page — they integrate directly into your existing **People page** and **Person details drawer**.
+
+### Key Behaviors
+1. **Members are healthy by default**: Members and workers do **not** have pending check-ins by default. Staff explicitly schedule or log outreach when care is needed.
+2. **Dual Workflow**:
+   - **Immediate Log**: A pastor or leader talks to a member and logs the conversation directly with `status: "COMPLETED"`.
+   - **Delegated Task**: An admin notices an issue (e.g., missed 3 services), creates a check-in with `status: "SCHEDULED"`, and optionally assigns a specific pastor/leader.
+3. **Audit History**: Every interaction is stored as a distinct record with timestamps, notes, and staff attribution — past notes are never overwritten.
+
+---
+
+### Integration on Existing People Page
+
+#### 1. In People Directory Table (`GET /people`)
+Each person object in `items` includes:
+* `lastCheckInAt`: `string | null` — ISO timestamp of the most recent completed check-in.
+* `hasPendingCheckIn`: `boolean` — `true` if there is an active `SCHEDULED` check-in task for this person.
+
+```json
+{
+  "id": "6a96bc8e-d98c-4573-9a3b-28f0fb26e031",
+  "firstName": "Emmanuel",
+  "lastName": "Adeyemi",
+  "membershipStatus": "WORKER",
+  "lastCheckInAt": "2026-10-18T15:30:00.000Z",
+  "hasPendingCheckIn": false
+}
+```
+
+#### 2. In Person Details Drawer (`GET /people/:id`)
+`GET /people/:id` automatically returns the person's complete `pastoralCheckIns` history array, ordered newest first:
+
+```json
+{
+  "id": "6a96bc8e-d98c-4573-9a3b-28f0fb26e031",
+  "firstName": "Emmanuel",
+  "lastName": "Adeyemi",
+  "membershipStatus": "WORKER",
+  "pastoralCheckIns": [
+    {
+      "id": "checkin-uuid-1",
+      "reason": "WORKER_WELFARE",
+      "status": "COMPLETED",
+      "scheduledFor": null,
+      "completedAt": "2026-10-18T15:30:00.000Z",
+      "notes": "Checked in regarding choir workload.",
+      "outcome": "Expressed burnout with weekly rehearsals. Agreed to take one Sunday off.",
+      "assignedTo": null,
+      "createdBy": {
+        "id": "user-uuid-1",
+        "firstName": "Michael",
+        "lastName": "Ade"
+      },
+      "createdAt": "2026-10-18T15:30:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+### Check-in API Endpoints
+
+#### 1. Create / Schedule Check-in: `POST /check-ins`
+Used in the Person Drawer when clicking **"+ Log Check-in"** or **"Flag for Care"**.
+
+##### Immediate Log Payload (`status: COMPLETED`):
+```json
+// POST /check-ins
+{
+  "personId": "6a96bc8e-d98c-4573-9a3b-28f0fb26e031",
+  "reason": "ILLNESS",
+  "status": "COMPLETED",
+  "notes": "Hospital visit after minor surgery.",
+  "outcome": "Recovering well at home. Church providing prayer support."
+}
+```
+
+##### Scheduled Task Payload (`status: SCHEDULED`):
+```json
+// POST /check-ins
+{
+  "personId": "6a96bc8e-d98c-4573-9a3b-28f0fb26e031",
+  "reason": "ABSENTEEISM",
+  "status": "SCHEDULED",
+  "assignedToId": "pastor-user-uuid", // optional
+  "scheduledFor": "2026-10-25T10:00:00.000Z", // optional
+  "notes": "Has missed 3 consecutive Sunday services. Please check in on him."
+}
+```
+
+#### 2. Complete / Update a Check-in: `PATCH /check-ins/:id`
+When an assigned pastor reaches out and completes the scheduled task:
+```json
+// PATCH /check-ins/:id
+{
+  "status": "COMPLETED",
+  "outcome": "Spoke on the phone. Was traveling for work; attending this Sunday."
+}
+```
+*(If `completedAt` is not provided, the backend automatically sets it to `now()` when status is set to `COMPLETED`.)*
+
+#### 3. Global Check-in Queue (Optional View): `GET /check-ins`
+If your admin dashboard has an outreach task tab:
+* **All Pending Tasks**: `GET /check-ins?status=SCHEDULED`
+* **My Assigned Tasks**: `GET /check-ins?status=SCHEDULED&assignedToId=<currentUserId>`
+* **Filter by Reason**: `GET /check-ins?reason=ABSENTEEISM`
+
+---
+
+### Enums Reference
+
+#### `CheckInReason`
+* `ABSENTEEISM` (Missed services / sudden absence)
+* `ILLNESS` (Hospitalized or recovering at home)
+* `BEREAVEMENT` (Loss in family)
+* `WORKER_WELFARE` (Burnout, scheduling, department welfare)
+* `DISCIPLESHIP` (Spiritual growth, baptism, foundations class)
+* `FAMILY_SUPPORT` (Marital, parental, or family needs)
+* `GENERAL_CHECK_IN` (Routine pastoral care)
+
+#### `CheckInStatus`
+* `SCHEDULED` (Pending outreach task)
+* `COMPLETED` (Contact completed with notes/outcome)
+* `CANCELLED` (No longer needed)
+
+
