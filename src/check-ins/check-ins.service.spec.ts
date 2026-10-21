@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { CheckInReason, CheckInStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -162,6 +162,34 @@ describe('CheckInsService', () => {
           { id: 'user-creator', churchId: 'church-1' },
         ),
       ).rejects.toThrow(NotFoundException);
+    });
+
+    it('should extract createdById from currentUser.sub (ActiveUserData)', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        churchId: 'church-1',
+      });
+      prismaMock.pastoralCheckIn.create.mockResolvedValue({
+        id: 'checkin-jwt',
+        createdById: 'jwt-sub-id',
+      });
+
+      await service.create(
+        { personId: 'person-1' },
+        { sub: 'jwt-sub-id', churchId: 'church-1' },
+      );
+
+      expect(prismaMock.pastoralCheckIn.create).toHaveBeenCalledTimes(1);
+      const call = prismaMock.pastoralCheckIn.create.mock.calls[0] as [
+        { data: Record<string, unknown> },
+      ];
+      expect(call[0].data.createdById).toBe('jwt-sub-id');
+    });
+
+    it('should throw UnauthorizedException if no user ID or sub is present', async () => {
+      await expect(
+        service.create({ personId: 'person-1' }, { churchId: 'church-1' }),
+      ).rejects.toThrow(UnauthorizedException);
     });
   });
 

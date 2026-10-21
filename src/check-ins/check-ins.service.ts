@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { CheckInStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateCheckInDto } from './dto/create-check-in.dto';
@@ -11,8 +15,15 @@ export class CheckInsService {
 
   async create(
     createDto: CreateCheckInDto,
-    currentUser: { id: string; churchId?: string },
+    currentUser: { id?: string; sub?: string; churchId?: string },
   ) {
+    const creatorId = currentUser.sub || currentUser.id;
+    if (!creatorId) {
+      throw new UnauthorizedException(
+        'Unable to identify the authenticated user creating this check-in',
+      );
+    }
+
     const targetChurchId =
       currentUser.churchId || (await this.prisma.getDefaultChurchId());
 
@@ -50,7 +61,7 @@ export class CheckInsService {
       data: {
         ...rest,
         churchId: targetChurchId,
-        createdById: currentUser.id,
+        createdById: creatorId,
         status: resolvedStatus,
         scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
         completedAt: resolvedCompletedAt,

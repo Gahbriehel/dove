@@ -29,6 +29,7 @@ Fetches a paginated, filterable list of congregation members and visitors with d
 | `membershipStatus` | `string` | `VISITOR`, `MEMBER`, `WORKER`, `LEADER`, `PASTOR` |
 | `departmentId` | `UUID` | Filter people belonging to a specific department |
 | `followUpStatus` | `string` | Filter visitor follow-up: `PENDING`, `IN_PROGRESS`, `CONVERTED`, `INACTIVE` (non-visitors have `null`) |
+| `hasPendingCheckIn` | `boolean` | Filter people who have an active `SCHEDULED` pastoral check-in (`true` or `false`) |
 | `gender` | `string` | `MALE`, `FEMALE`, `OTHER` |
 | `page` | `number` | Default: `1` |
 | `limit` | `number` | Default: `10` (Max: `100`) |

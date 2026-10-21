@@ -2,6 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Gender, MembershipStatus } from '@prisma/client';
 import { Transform, Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsInt,
   IsOptional,
@@ -13,6 +14,12 @@ import {
 
 const toUpperCase = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.toUpperCase() : value;
+
+const toBoolean = ({ value }: { value: unknown }): boolean | undefined => {
+  if (value === 'true' || value === true) return true;
+  if (value === 'false' || value === false) return false;
+  return undefined;
+};
 
 export class QueryPersonDto {
   @ApiPropertyOptional({ description: 'Filter by church ID' })
@@ -53,6 +60,15 @@ export class QueryPersonDto {
   @IsString()
   @IsOptional()
   followUpStatus?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by whether person has an active scheduled pastoral check-in',
+  })
+  @Transform(toBoolean)
+  @IsBoolean()
+  @IsOptional()
+  hasPendingCheckIn?: boolean;
 
   @ApiPropertyOptional({
     description: 'Search by first name, last name, email, or phone',

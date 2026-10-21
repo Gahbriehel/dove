@@ -1,6 +1,11 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
-import { FollowUpStatus, Gender, MembershipStatus } from '@prisma/client';
+import {
+  CheckInStatus,
+  FollowUpStatus,
+  Gender,
+  MembershipStatus,
+} from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { PeopleService } from './people.service';
 
@@ -184,6 +189,52 @@ describe('PeopleService', () => {
       expect(result.meta.total).toBe(1);
       expect(result.stats.membership.members).toBe(1);
       expect(result.stats.gender.male).toBe(1);
+    });
+
+    it('should filter by hasPendingCheckIn = true', async () => {
+      prismaMock.person.findMany.mockResolvedValue([]);
+      for (let i = 0; i < 11; i++) {
+        prismaMock.person.count.mockResolvedValueOnce(0);
+      }
+
+      await service.findAll({ hasPendingCheckIn: true }, 'church-1');
+
+      expect(prismaMock.person.findMany).toHaveBeenCalledTimes(1);
+      const firstCall = prismaMock.person.findMany.mock.calls[0] as [
+        {
+          where: {
+            churchId: string;
+            pastoralCheckIns?: { some?: { status: CheckInStatus } };
+          };
+        },
+      ];
+      expect(firstCall[0].where.churchId).toBe('church-1');
+      expect(firstCall[0].where.pastoralCheckIns).toEqual({
+        some: { status: CheckInStatus.SCHEDULED },
+      });
+    });
+
+    it('should filter by hasPendingCheckIn = false', async () => {
+      prismaMock.person.findMany.mockResolvedValue([]);
+      for (let i = 0; i < 11; i++) {
+        prismaMock.person.count.mockResolvedValueOnce(0);
+      }
+
+      await service.findAll({ hasPendingCheckIn: false }, 'church-1');
+
+      expect(prismaMock.person.findMany).toHaveBeenCalledTimes(1);
+      const secondCall = prismaMock.person.findMany.mock.calls[0] as [
+        {
+          where: {
+            churchId: string;
+            pastoralCheckIns?: { none?: { status: CheckInStatus } };
+          };
+        },
+      ];
+      expect(secondCall[0].where.churchId).toBe('church-1');
+      expect(secondCall[0].where.pastoralCheckIns).toEqual({
+        none: { status: CheckInStatus.SCHEDULED },
+      });
     });
   });
 

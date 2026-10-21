@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { CheckInReason, CheckInStatus } from '@prisma/client';
+import { ActiveUserData } from '../common/decorators/current-user.decorator';
 import { CheckInsController } from './check-ins.controller';
 import { CheckInsService } from './check-ins.service';
 
@@ -45,7 +46,12 @@ describe('CheckInsController', () => {
       reason: CheckInReason.ABSENTEEISM,
       notes: 'Missed service',
     };
-    const user = { id: 'user-1', churchId: 'church-1' };
+    const user: ActiveUserData = {
+      sub: 'user-1',
+      churchId: 'church-1',
+      email: 'test@example.com',
+      roles: ['ADMIN'],
+    };
     const expected = { id: 'checkin-1', ...dto };
     serviceMock.create.mockResolvedValue(expected);
 

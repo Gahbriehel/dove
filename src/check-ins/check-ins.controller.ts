@@ -17,7 +17,10 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { CurrentUser } from '../common/decorators/current-user.decorator';
+import {
+  CurrentUser,
+  type ActiveUserData,
+} from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { JwtAuthGuard } from '../common/guards/jwt-auth.guard';
@@ -47,7 +50,7 @@ export class CheckInsController {
   })
   async create(
     @Body() createCheckInDto: CreateCheckInDto,
-    @CurrentUser() currentUser: { id: string; churchId?: string },
+    @CurrentUser() currentUser: ActiveUserData,
   ) {
     return this.checkInsService.create(createCheckInDto, currentUser);
   }

@@ -61,8 +61,14 @@ export class PeopleService {
     query: QueryPersonDto,
     targetChurchId: string,
   ): Prisma.PersonWhereInput {
-    const { membershipStatus, gender, search, departmentId, followUpStatus } =
-      query;
+    const {
+      membershipStatus,
+      gender,
+      search,
+      departmentId,
+      followUpStatus,
+      hasPendingCheckIn,
+    } = query;
 
     const where: Prisma.PersonWhereInput = {
       churchId: targetChurchId,
@@ -86,6 +92,20 @@ export class PeopleService {
 
     if (followUpStatus) {
       where.followUpStatus = followUpStatus as FollowUpStatus;
+    }
+
+    if (hasPendingCheckIn === true) {
+      where.pastoralCheckIns = {
+        some: {
+          status: CheckInStatus.SCHEDULED,
+        },
+      };
+    } else if (hasPendingCheckIn === false) {
+      where.pastoralCheckIns = {
+        none: {
+          status: CheckInStatus.SCHEDULED,
+        },
+      };
     }
 
     if (search) {
