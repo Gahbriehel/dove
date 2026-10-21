@@ -14,6 +14,7 @@ import {
   RegistrationConfirmationEmailData,
 } from '../interfaces/email-service.interface';
 import { AdminWelcomeEmail } from '../templates/admin-welcome.template';
+import { BirthdayGreetingEmail } from '../templates/birthday-greeting.template';
 import { BounceAdminAlertEmail } from '../templates/bounce-admin-alert.template';
 import { CustomBroadcastEmail } from '../templates/custom-broadcast.template';
 import { RegistrationConfirmationEmail } from '../templates/registration-confirmation.template';
@@ -32,6 +33,21 @@ export class ResendEmailProvider implements IEmailService {
     this.resend = new Resend(apiKey);
     this.fromAddress =
       this.configService.get<string>('resend.from') || 'onboarding@resend.dev';
+  }
+
+  /**
+   * Formats a friendly From header using the church name if available,
+   * avoiding anonymous sender addresses that trigger Gmail's Promotions tab.
+   */
+  private formatFromAddress(churchName?: string): string {
+    if (!churchName || churchName.trim() === '') {
+      return this.fromAddress;
+    }
+    if (this.fromAddress.includes('<') && this.fromAddress.includes('>')) {
+      return this.fromAddress;
+    }
+    const cleanChurchName = churchName.replace(/["\r\n]/g, '').trim();
+    return `"${cleanChurchName}" <${this.fromAddress}>`;
   }
 
   /**
@@ -127,8 +143,9 @@ export class ResendEmailProvider implements IEmailService {
         });
       }
 
-      const html = await render(
-        React.createElement(RegistrationConfirmationEmail, {
+      const registrationComponent = React.createElement(
+        RegistrationConfirmationEmail,
+        {
           recipientName: data.recipientName,
           eventTitle: data.eventTitle,
           eventDate: data.eventDate,
@@ -140,8 +157,13 @@ export class ResendEmailProvider implements IEmailService {
           teamName: data.teamName,
           teamColor: data.teamColor,
           googleCalendarUrl: data.googleCalendarUrl,
-        }),
+        },
       );
+
+      const [html, text] = await Promise.all([
+        render(registrationComponent),
+        render(registrationComponent, { plainText: true }),
+      ]);
 
       const headers: Record<string, string> = {
         'X-Dove-Email-Type': 'REGISTRATION_CONFIRMATION',
@@ -152,10 +174,12 @@ export class ResendEmailProvider implements IEmailService {
         headers['X-Dove-Registration-Id'] = data.registrationId;
 
       const response = await this.resend.emails.send({
-        from: this.fromAddress,
+        from: this.formatFromAddress(),
         to: data.recipientEmail,
         subject: `Registration Confirmation: ${data.eventTitle}`,
         html,
+        text,
+        replyTo: data.contactEmail || undefined,
         attachments,
         headers: Object.keys(headers).length > 0 ? headers : undefined,
       });
@@ -192,15 +216,18 @@ export class ResendEmailProvider implements IEmailService {
 
   async sendAdminWelcome(data: AdminWelcomeEmailData): Promise<void> {
     try {
-      const html = await render(
-        React.createElement(AdminWelcomeEmail, {
-          recipientName: data.recipientName,
-          recipientEmail: data.recipientEmail,
-          temporaryPassword: data.temporaryPassword,
-          loginUrl: data.loginUrl,
-          churchName: data.churchName,
-        }),
-      );
+      const welcomeComponent = React.createElement(AdminWelcomeEmail, {
+        recipientName: data.recipientName,
+        recipientEmail: data.recipientEmail,
+        temporaryPassword: data.temporaryPassword,
+        loginUrl: data.loginUrl,
+        churchName: data.churchName,
+      });
+
+      const [html, text] = await Promise.all([
+        render(welcomeComponent),
+        render(welcomeComponent, { plainText: true }),
+      ]);
 
       const headers: Record<string, string> = {
         'X-Dove-Email-Type': 'ADMIN_WELCOME',
@@ -209,10 +236,11 @@ export class ResendEmailProvider implements IEmailService {
       if (data.userId) headers['X-Dove-User-Id'] = data.userId;
 
       const response = await this.resend.emails.send({
-        from: this.fromAddress,
+        from: this.formatFromAddress(data.churchName),
         to: data.recipientEmail,
         subject: `Welcome to ${data.churchName || 'Dove Platform'} - Your Admin Account Credentials`,
         html,
+        text,
         headers: Object.keys(headers).length > 0 ? headers : undefined,
       });
 
@@ -278,27 +306,45 @@ export class ResendEmailProvider implements IEmailService {
         }
       }
 
-      const html = await render(
-        React.createElement(CustomBroadcastEmail, {
-          recipientName: data.recipientName,
-          subject: data.subject,
-          heading: data.heading,
-          message: data.message,
-          ctaLabel: data.ctaLabel,
-          ctaUrl: data.ctaUrl,
-          churchName: data.churchName,
-          contactEmail: data.contactEmail,
-          contactPhone: data.contactPhone,
-          eventTitle: data.eventTitle,
-          eventDate: data.eventDate,
-          eventLocation: data.eventLocation,
-          registrationNumber: data.registrationNumber,
-          qrCodeDataUrl: qrCodeDataUrlProp,
-          teamName: data.teamName,
-          teamColor: data.teamColor,
-          imageUrl: data.imageUrl,
-        }),
-      );
+      const isBirthdayGreeting = data.emailType === 'BIRTHDAY_GREETING';
+
+      const emailComponent = isBirthdayGreeting
+        ? React.createElement(BirthdayGreetingEmail, {
+            recipientName: data.recipientName,
+            subject: data.subject,
+            heading: data.heading,
+            message: data.message,
+            ctaLabel: data.ctaLabel,
+            ctaUrl: data.ctaUrl,
+            churchName: data.churchName,
+            contactEmail: data.contactEmail,
+            contactPhone: data.contactPhone,
+            imageUrl: data.imageUrl,
+          })
+        : React.createElement(CustomBroadcastEmail, {
+            recipientName: data.recipientName,
+            subject: data.subject,
+            heading: data.heading,
+            message: data.message,
+            ctaLabel: data.ctaLabel,
+            ctaUrl: data.ctaUrl,
+            churchName: data.churchName,
+            contactEmail: data.contactEmail,
+            contactPhone: data.contactPhone,
+            eventTitle: data.eventTitle,
+            eventDate: data.eventDate,
+            eventLocation: data.eventLocation,
+            registrationNumber: data.registrationNumber,
+            qrCodeDataUrl: qrCodeDataUrlProp,
+            teamName: data.teamName,
+            teamColor: data.teamColor,
+            imageUrl: data.imageUrl,
+          });
+
+      const [html, text] = await Promise.all([
+        render(emailComponent),
+        render(emailComponent, { plainText: true }),
+      ]);
 
       const headers: Record<string, string> = {
         'X-Dove-Email-Type': data.emailType || 'CUSTOM_BROADCAST',
@@ -310,10 +356,12 @@ export class ResendEmailProvider implements IEmailService {
         headers['X-Dove-Registration-Id'] = data.registrationId;
 
       const response = await this.resend.emails.send({
-        from: this.fromAddress,
+        from: this.formatFromAddress(data.churchName),
         to: data.recipientEmail,
         subject: data.subject,
         html,
+        text,
+        replyTo: data.contactEmail || undefined,
         attachments,
         headers: Object.keys(headers).length > 0 ? headers : undefined,
       });
@@ -381,27 +429,44 @@ export class ResendEmailProvider implements IEmailService {
           // data: URI images, so item.qrCodeDataUrl is a hosted
           // https:// URL here (see EmailService.sendToRegistrantsBatch),
           // not a base64 data URI like the single-send path uses.
-          const html = await render(
-            React.createElement(CustomBroadcastEmail, {
-              recipientName: item.recipientName,
-              subject: item.subject,
-              heading: item.heading,
-              message: item.message,
-              ctaLabel: item.ctaLabel,
-              ctaUrl: item.ctaUrl,
-              churchName: item.churchName,
-              contactEmail: item.contactEmail,
-              contactPhone: item.contactPhone,
-              eventTitle: item.eventTitle,
-              eventDate: item.eventDate,
-              eventLocation: item.eventLocation,
-              registrationNumber: item.registrationNumber,
-              qrCodeDataUrl: item.qrCodeDataUrl,
-              teamName: item.teamName,
-              teamColor: item.teamColor,
-              imageUrl: item.imageUrl,
-            }),
-          );
+          const isBirthday = item.emailType === 'BIRTHDAY_GREETING';
+          const emailComponent = isBirthday
+            ? React.createElement(BirthdayGreetingEmail, {
+                recipientName: item.recipientName,
+                subject: item.subject,
+                heading: item.heading,
+                message: item.message,
+                ctaLabel: item.ctaLabel,
+                ctaUrl: item.ctaUrl,
+                churchName: item.churchName,
+                contactEmail: item.contactEmail,
+                contactPhone: item.contactPhone,
+                imageUrl: item.imageUrl,
+              })
+            : React.createElement(CustomBroadcastEmail, {
+                recipientName: item.recipientName,
+                subject: item.subject,
+                heading: item.heading,
+                message: item.message,
+                ctaLabel: item.ctaLabel,
+                ctaUrl: item.ctaUrl,
+                churchName: item.churchName,
+                contactEmail: item.contactEmail,
+                contactPhone: item.contactPhone,
+                eventTitle: item.eventTitle,
+                eventDate: item.eventDate,
+                eventLocation: item.eventLocation,
+                registrationNumber: item.registrationNumber,
+                qrCodeDataUrl: item.qrCodeDataUrl,
+                teamName: item.teamName,
+                teamColor: item.teamColor,
+                imageUrl: item.imageUrl,
+              });
+
+          const [html, text] = await Promise.all([
+            render(emailComponent),
+            render(emailComponent, { plainText: true }),
+          ]);
 
           const headers: Record<string, string> = {
             'X-Dove-Email-Type': item.emailType || 'CUSTOM_BROADCAST',
@@ -413,10 +478,12 @@ export class ResendEmailProvider implements IEmailService {
             headers['X-Dove-Registration-Id'] = item.registrationId;
 
           return {
-            from: this.fromAddress,
+            from: this.formatFromAddress(item.churchName),
             to: item.recipientEmail,
             subject: item.subject,
             html,
+            text,
+            replyTo: item.contactEmail || undefined,
             headers: Object.keys(headers).length > 0 ? headers : undefined,
           };
         }),

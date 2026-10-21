@@ -76,9 +76,9 @@ export const CustomBroadcastEmail = ({
         <Container style={container}>
           {/* Header Banner */}
           <Section style={headerSection}>
-            <Text style={categoryBadge}>
-              {churchName ? churchName.toUpperCase() : 'ANNOUNCEMENT'}
-            </Text>
+            {churchName && (
+              <Text style={categoryBadge}>{churchName.toUpperCase()}</Text>
+            )}
             <Heading style={heading}>{displayHeading}</Heading>
           </Section>
 
@@ -93,10 +93,6 @@ export const CustomBroadcastEmail = ({
               />
             </Section>
           )}
-
-          <Text style={paragraph}>
-            Hello <strong>{recipientName}</strong>,
-          </Text>
 
           {/* Render Message Content */}
           {messageIsHtml ? (
