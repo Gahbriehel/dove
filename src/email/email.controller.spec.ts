@@ -64,4 +64,46 @@ describe('EmailController', () => {
       expect(result).toBe(mockResult);
     });
   });
+
+  describe('sendToPeopleBatch', () => {
+    it('should delegate to emailService.sendToPeopleBatch with dto, churchId, and sentByUserId', async () => {
+      const dto = {
+        personIds: ['person-1', 'person-2'],
+        subject: 'Weekly Fellowship & Community Announcement',
+        heading: 'Welcome to Sunday Service',
+        message: '<p>Join us this Sunday. Check out the flyer below!</p>',
+        imageUrl:
+          'https://api.abwog.org/public/uploads/1792601056334-762496662.jpg',
+        ctaLabel: 'Read More',
+        ctaUrl: 'https://example.org/news',
+      };
+
+      const mockResponse = {
+        message:
+          'Batch email processing completed. 2 sent successfully out of 2 valid recipients.',
+        results: {
+          totalTargeted: 2,
+          totalWithEmail: 2,
+          totalSent: 2,
+          totalFailed: 0,
+          failedRecipients: [],
+        },
+      };
+
+      emailServiceMock.sendToPeopleBatch.mockResolvedValue(mockResponse);
+
+      const result = await controller.sendToPeopleBatch(
+        dto,
+        'church-123',
+        'admin-user-sub',
+      );
+
+      expect(emailServiceMock.sendToPeopleBatch).toHaveBeenCalledWith(
+        dto,
+        'church-123',
+        'admin-user-sub',
+      );
+      expect(result).toBe(mockResponse);
+    });
+  });
 });

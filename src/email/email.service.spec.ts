@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from './email.service';
 import { EMAIL_SERVICE } from './interfaces/email-service.interface';
-import { RegistrationStatus } from '@prisma/client';
+import { MembershipStatus, RegistrationStatus } from '@prisma/client';
 
 describe('EmailService', () => {
   let service: EmailService;
@@ -179,6 +179,201 @@ describe('EmailService', () => {
           imageUrl: undefined,
         }),
       ]);
+    });
+  });
+
+  describe('sendToPeopleBatch', () => {
+    const mockPerson1 = {
+      id: 'person-1',
+      firstName: 'Alice',
+      lastName: 'Smith',
+      email: 'alice.smith@example.com',
+      phone: '+15551234567',
+      church: {
+        name: 'Dove Church',
+        email: 'office@dove.church',
+        phone: '+15550001111',
+      },
+    };
+
+    const mockPerson2 = {
+      id: 'person-2',
+      firstName: 'Bob',
+      lastName: 'Jones',
+      email: 'bob.jones@example.com',
+      phone: '+15559876543',
+      church: {
+        name: 'Dove Church',
+        email: 'office@dove.church',
+        phone: '+15550001111',
+      },
+    };
+
+    it('should resolve relative imageUrl to absolute appUrl and dispatch batch email to people', async () => {
+      prismaMock.person.findMany.mockResolvedValue([mockPerson1]);
+
+      const result = await service.sendToPeopleBatch({
+        personIds: ['person-1'],
+        subject: 'Special Announcement for {{firstName}}',
+        message: '<p>Hello {{firstName}}, review the flyer below.</p>',
+        imageUrl: '/public/uploads/flyer-relative.png',
+        ctaLabel: 'Read More',
+        ctaUrl: 'https://example.org/news',
+      });
+
+      expect(prismaMock.person.findMany).toHaveBeenCalledWith({
+        where: {
+          churchId: 'church-1',
+          id: { in: ['person-1'] },
+        },
+        include: { church: true },
+      });
+
+      expect(emailProviderMock.sendBatchCustomBroadcast).toHaveBeenCalledWith([
+        expect.objectContaining({
+          recipientEmail: 'alice.smith@example.com',
+          recipientName: 'Alice Smith',
+          subject: 'Special Announcement for Alice',
+          message: '<p>Hello Alice, review the flyer below.</p>',
+          imageUrl: 'http://localhost:3000/public/uploads/flyer-relative.png',
+          ctaLabel: 'Read More',
+          ctaUrl: 'https://example.org/news',
+        }),
+      ]);
+
+      expect(result.results.totalSent).toBe(1);
+    });
+
+    it('should keep external https:// imageUrl as is without prepending appUrl for people batch', async () => {
+      prismaMock.person.findMany.mockResolvedValue([mockPerson1, mockPerson2]);
+
+      const result = await service.sendToPeopleBatch({
+        personIds: ['person-1', 'person-2'],
+        subject: 'Weekly Fellowship Announcement',
+        heading: 'Welcome to Sunday Service',
+        message: '<p>Join us this Sunday. Check out the flyer below!</p>',
+        imageUrl:
+          'https://api.abwog.org/public/uploads/1792601056334-762496662.jpg',
+      });
+
+      expect(emailProviderMock.sendBatchCustomBroadcast).toHaveBeenCalledWith([
+        expect.objectContaining({
+          recipientEmail: 'alice.smith@example.com',
+          imageUrl:
+            'https://api.abwog.org/public/uploads/1792601056334-762496662.jpg',
+        }),
+        expect.objectContaining({
+          recipientEmail: 'bob.jones@example.com',
+          imageUrl:
+            'https://api.abwog.org/public/uploads/1792601056334-762496662.jpg',
+        }),
+      ]);
+
+      expect(result.message).toContain('Batch email processing completed');
+    });
+
+    it('should set imageUrl to undefined when omitted or whitespace in people batch', async () => {
+      prismaMock.person.findMany.mockResolvedValue([mockPerson1]);
+
+      await service.sendToPeopleBatch({
+        personIds: ['person-1'],
+        subject: 'Community Reminder',
+        heading: 'Upcoming Prayer Meeting',
+        message: "<p>Don't forget our prayer meeting tomorrow at 7 PM.</p>",
+      });
+
+      expect(emailProviderMock.sendBatchCustomBroadcast).toHaveBeenCalledWith([
+        expect.objectContaining({
+          recipientEmail: 'alice.smith@example.com',
+          imageUrl: undefined,
+        }),
+      ]);
+    });
+
+    it('should handle empty string imageUrl by setting imageUrl to undefined', async () => {
+      prismaMock.person.findMany.mockResolvedValue([mockPerson1]);
+
+      await service.sendToPeopleBatch({
+        personIds: ['person-1'],
+        subject: 'Community Reminder',
+        message: '<p>Simple reminder.</p>',
+        imageUrl: '   ',
+      });
+
+      expect(emailProviderMock.sendBatchCustomBroadcast).toHaveBeenCalledWith([
+        expect.objectContaining({
+          recipientEmail: 'alice.smith@example.com',
+          imageUrl: undefined,
+        }),
+      ]);
+    });
+
+    it('should filter by membershipStatus and search when provided', async () => {
+      prismaMock.person.findMany.mockResolvedValue([mockPerson1]);
+
+      await service.sendToPeopleBatch({
+        membershipStatus: MembershipStatus.MEMBER,
+        search: 'Alice',
+        subject: 'Members Notice',
+        message: 'Dear member...',
+      });
+
+      expect(prismaMock.person.findMany).toHaveBeenCalledWith({
+        where: {
+          churchId: 'church-1',
+          membershipStatus: 'MEMBER',
+          OR: [
+            { firstName: { contains: 'Alice' } },
+            { lastName: { contains: 'Alice' } },
+            { email: { contains: 'Alice' } },
+            { phone: { contains: 'Alice' } },
+          ],
+        },
+        include: { church: true },
+      });
+    });
+
+    it('should skip people without valid email addresses', async () => {
+      const personWithoutEmail = {
+        id: 'person-no-email',
+        firstName: 'No',
+        lastName: 'Email',
+        email: '',
+        church: { name: 'Dove Church' },
+      };
+
+      prismaMock.person.findMany.mockResolvedValue([
+        mockPerson1,
+        personWithoutEmail,
+      ]);
+
+      await service.sendToPeopleBatch({
+        subject: 'Test',
+        message: 'Hello',
+      });
+
+      expect(emailProviderMock.sendBatchCustomBroadcast).toHaveBeenCalledWith([
+        expect.objectContaining({
+          recipientEmail: 'alice.smith@example.com',
+        }),
+      ]);
+      expect(emailProviderMock.sendBatchCustomBroadcast).toHaveBeenCalledWith(
+        expect.arrayContaining([expect.anything()]),
+      );
+    });
+
+    it('should throw BadRequestException when no people match criteria', async () => {
+      prismaMock.person.findMany.mockResolvedValue([]);
+
+      await expect(
+        service.sendToPeopleBatch({
+          personIds: ['non-existent-id'],
+          subject: 'Test',
+          message: 'Hello',
+        }),
+      ).rejects.toThrow(
+        'No matching people found for the specified filter criteria.',
+      );
     });
   });
 

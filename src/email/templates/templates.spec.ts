@@ -65,5 +65,38 @@ describe('Email Templates', () => {
       // The author\'s custom message should be intact
       expect(html).toContain('Dear Caleb, service times have changed.');
     });
+
+    it('should render flyer image when imageUrl is provided', () => {
+      const element = React.createElement(CustomBroadcastEmail, {
+        recipientName: 'Caleb Smith',
+        subject: 'Church Update',
+        message: 'Dear Caleb, check out the flyer below.',
+        churchName: 'Dove Sanctuary',
+        imageUrl:
+          'https://api.abwog.org/public/uploads/1792601056334-762496662.jpg',
+      });
+
+      const html = renderToStaticMarkup(element);
+
+      // Verifies the flyer image tag is rendered with the provided src URL
+      expect(html).toContain(
+        'src="https://api.abwog.org/public/uploads/1792601056334-762496662.jpg"',
+      );
+      expect(html).toContain('<img');
+    });
+
+    it('should omit flyer image when imageUrl is undefined or omitted', () => {
+      const element = React.createElement(CustomBroadcastEmail, {
+        recipientName: 'Caleb Smith',
+        subject: 'Church Update',
+        message: 'Dear Caleb, regular text update.',
+        churchName: 'Dove Sanctuary',
+      });
+
+      const html = renderToStaticMarkup(element);
+
+      // Verifies that without imageUrl, no flyer image tag is rendered
+      expect(html).not.toContain('<img');
+    });
   });
 });
