@@ -1,3 +1,4 @@
+import { verifyUnsubscribeToken } from './utils/unsubscribe-token.util';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -65,6 +66,7 @@ describe('EmailService', () => {
     configMock = {
       get: jest.fn((key: string) => {
         if (key === 'appUrl') return 'http://localhost:3000';
+        if (key === 'jwt.secret') return 'test-secret';
         return undefined;
       }),
     };
@@ -270,6 +272,45 @@ describe('EmailService', () => {
       ]);
 
       expect(result.message).toContain('Batch email processing completed');
+    });
+
+    it('should attach a verifiable unsubscribe URL to each people batch email', async () => {
+      prismaMock.person.findMany.mockResolvedValue([mockPerson1]);
+
+      await service.sendToPeopleBatch({
+        personIds: ['person-1'],
+        subject: 'Announcement',
+        message: '<p>Hello</p>',
+      });
+
+      const [[items]] = emailProviderMock.sendBatchCustomBroadcast.mock
+        .calls as [[Array<{ unsubscribeUrl?: string }>]];
+      const prefix = 'http://localhost:3000/api/v1/email/unsubscribe/';
+      expect(items[0].unsubscribeUrl).toContain(prefix);
+
+      const token = decodeURIComponent(
+        items[0].unsubscribeUrl!.slice(prefix.length),
+      );
+      expect(verifyUnsubscribeToken(token, 'test-secret')).toBe('person-1');
+    });
+
+    it('should skip opted-out people and report how many were skipped', async () => {
+      prismaMock.person.findMany.mockResolvedValue([
+        mockPerson1,
+        { ...mockPerson2, emailOptOut: true },
+      ]);
+
+      const result = await service.sendToPeopleBatch({
+        personIds: ['person-1', 'person-2'],
+        subject: 'Announcement',
+        message: '<p>Hello</p>',
+      });
+
+      expect(emailProviderMock.sendBatchCustomBroadcast).toHaveBeenCalledWith([
+        expect.objectContaining({ recipientEmail: 'alice.smith@example.com' }),
+      ]);
+      expect(result.results.totalOptedOut).toBe(1);
+      expect(result.message).toContain('1 skipped (unsubscribed)');
     });
 
     it('should set imageUrl to undefined when omitted or whitespace in people batch', async () => {

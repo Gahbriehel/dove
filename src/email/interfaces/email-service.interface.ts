@@ -51,8 +51,8 @@ export interface CustomEmailData {
   teamName?: string;
   teamColor?: string;
   imageUrl?: string;
-  /** PLAIN renders a minimal letter-style layout; default is the styled campaign layout. */
-  layout?: 'STYLED' | 'PLAIN';
+  /** When set, adds List-Unsubscribe headers and a footer link (broadcasts only). */
+  unsubscribeUrl?: string;
   emailType?: string;
   churchId?: string;
   personId?: string;
@@ -76,6 +76,7 @@ export interface BatchCustomEmailResult {
   totalWithEmail: number;
   totalSent: number;
   totalFailed: number;
+  totalOptedOut?: number;
   failedRecipients: Array<{ recipient: string; reason: string }>;
 }
 

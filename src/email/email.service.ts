@@ -28,6 +28,7 @@ import {
   EMAIL_SERVICE,
 } from './interfaces/email-service.interface';
 import type { IEmailService } from './interfaces/email-service.interface';
+import { signUnsubscribeToken } from './utils/unsubscribe-token.util';
 
 @Injectable()
 export class EmailService {
@@ -148,9 +149,15 @@ export class EmailService {
 
     const resolvedImageUrl = this.resolveImageUrl(dto.imageUrl);
     const customEmailDataList: CustomEmailData[] = [];
+    let totalOptedOut = 0;
 
     for (const person of people) {
       if (!person.email || person.email.trim() === '') {
+        continue;
+      }
+
+      if (person.emailOptOut) {
+        totalOptedOut++;
         continue;
       }
 
@@ -180,7 +187,7 @@ export class EmailService {
         contactEmail: person.church?.email || undefined,
         contactPhone: person.church?.phone || undefined,
         imageUrl: resolvedImageUrl,
-        layout: dto.layout,
+        unsubscribeUrl: this.buildUnsubscribeUrl(person.id),
         churchId,
         personId: person.id,
         sentByUserId,
@@ -190,9 +197,12 @@ export class EmailService {
     const results =
       await this.emailProvider.sendBatchCustomBroadcast(customEmailDataList);
 
+    const optedOutNote =
+      totalOptedOut > 0 ? ` ${totalOptedOut} skipped (unsubscribed).` : '';
+
     return {
-      message: `Batch email processing completed. ${results.totalSent} sent successfully out of ${results.totalWithEmail} valid recipients.`,
-      results,
+      message: `Batch email processing completed. ${results.totalSent} sent successfully out of ${results.totalWithEmail} valid recipients.${optedOutNote}`,
+      results: totalOptedOut > 0 ? { ...results, totalOptedOut } : results,
     };
   }
 
@@ -702,6 +712,20 @@ export class EmailService {
       limit,
       totalPages: Math.ceil(total / limit) || 1,
     };
+  }
+
+  /**
+   * Signed one-click unsubscribe link for a person, or undefined when no
+   * signing secret is configured (the email is then sent without one).
+   */
+  private buildUnsubscribeUrl(personId: string): string | undefined {
+    const secret = this.configService.get<string>('jwt.secret');
+    if (!secret) return undefined;
+
+    const appUrl =
+      this.configService.get<string>('appUrl')?.replace(/\/+$/, '') || '';
+    const token = signUnsubscribeToken(personId, secret);
+    return `${appUrl}/api/v1/email/unsubscribe/${encodeURIComponent(token)}`;
   }
 
   private resolveImageUrl(imageUrl?: string): string | undefined {

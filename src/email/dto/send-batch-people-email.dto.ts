@@ -10,11 +10,6 @@ import {
   IsUUID,
 } from 'class-validator';
 
-export enum EmailLayout {
-  STYLED = 'STYLED',
-  PLAIN = 'PLAIN',
-}
-
 export class SendBatchPeopleEmailDto {
   @ApiPropertyOptional({
     description: 'Specific array of person IDs to target (optional)',
@@ -92,14 +87,4 @@ export class SendBatchPeopleEmailDto {
   @IsString()
   @IsOptional()
   imageUrl?: string;
-
-  @ApiPropertyOptional({
-    enum: EmailLayout,
-    default: EmailLayout.STYLED,
-    description:
-      'STYLED (banner/card campaign look) or PLAIN (minimal letter-style layout, better inbox placement for announcements and invitations)',
-  })
-  @IsEnum(EmailLayout)
-  @IsOptional()
-  layout?: EmailLayout;
 }

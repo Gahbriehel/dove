@@ -32,6 +32,7 @@ export interface CustomBroadcastEmailProps {
   teamName?: string;
   teamColor?: string;
   imageUrl?: string;
+  unsubscribeUrl?: string;
 }
 
 export const CustomBroadcastEmail = ({
@@ -52,6 +53,7 @@ export const CustomBroadcastEmail = ({
   teamName,
   teamColor,
   imageUrl,
+  unsubscribeUrl,
 }: CustomBroadcastEmailProps) => {
   const displayHeading = customHeading || subject;
 
@@ -218,6 +220,16 @@ export const CustomBroadcastEmail = ({
           <Text style={footer}>
             Sent via {churchName || 'Dove Platform'}. Thank you!
           </Text>
+
+          {unsubscribeUrl && (
+            <Text style={footer}>
+              You are receiving this because you are part of{' '}
+              {churchName || 'our church'}.{' '}
+              <Link href={unsubscribeUrl} style={unsubscribeLink}>
+                Unsubscribe
+              </Link>
+            </Text>
+          )}
         </Container>
       </Body>
     </Html>
@@ -413,6 +425,11 @@ const footer = {
   textAlign: 'center' as const,
   lineHeight: '1.5',
   margin: '0',
+};
+
+const unsubscribeLink = {
+  color: '#94a3b8',
+  textDecoration: 'underline',
 };
 
 export default CustomBroadcastEmail;

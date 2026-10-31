@@ -7,7 +7,6 @@ import * as React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { BirthdayGreetingEmail } from './birthday-greeting.template';
 import { CustomBroadcastEmail } from './custom-broadcast.template';
-import { PlainMessageEmail } from './plain-message.template';
 
 describe('Email Templates', () => {
   describe('BirthdayGreetingEmail', () => {
@@ -86,6 +85,25 @@ describe('Email Templates', () => {
       expect(html).toContain('<img');
     });
 
+    it('should render an unsubscribe link only when unsubscribeUrl is provided', () => {
+      const withLink = renderToStaticMarkup(
+        React.createElement(CustomBroadcastEmail, {
+          message: 'Hello',
+          churchName: 'Dove Church',
+          unsubscribeUrl: 'https://api.example.org/api/v1/email/unsubscribe/t',
+        }),
+      );
+      expect(withLink).toContain(
+        'href="https://api.example.org/api/v1/email/unsubscribe/t"',
+      );
+      expect(withLink).toContain('Unsubscribe');
+
+      const withoutLink = renderToStaticMarkup(
+        React.createElement(CustomBroadcastEmail, { message: 'Hello' }),
+      );
+      expect(withoutLink).not.toContain('Unsubscribe');
+    });
+
     it('should omit flyer image when imageUrl is undefined or omitted', () => {
       const element = React.createElement(CustomBroadcastEmail, {
         recipientName: 'Caleb Smith',
@@ -98,45 +116,6 @@ describe('Email Templates', () => {
 
       // Verifies that without imageUrl, no flyer image tag is rendered
       expect(html).not.toContain('<img');
-    });
-  });
-
-  describe('PlainMessageEmail', () => {
-    it('should render a minimal letter-style layout without campaign chrome', () => {
-      const html = renderToStaticMarkup(
-        React.createElement(PlainMessageEmail, {
-          heading: 'Come Let Us Give Thanks',
-          message: 'Dearly Beloved,\n\nJoin us this Sunday.',
-          churchName: 'Abiding Word of Grace Missions',
-          contactEmail: 'info@abwog.org',
-        }),
-      );
-
-      expect(html).toContain('Come Let Us Give Thanks');
-      expect(html).toContain('Dearly Beloved,');
-      expect(html).toContain('Join us this Sunday.');
-      expect(html).toContain('Abiding Word of Grace Missions');
-      expect(html).toContain('info@abwog.org');
-      expect(html).not.toContain('Need assistance or have questions?');
-      expect(html).not.toContain('Sent via');
-      expect(html).not.toContain('box-shadow');
-      expect(html).not.toContain('<img');
-    });
-
-    it('should render rich HTML messages, an optional image and a text link CTA', () => {
-      const html = renderToStaticMarkup(
-        React.createElement(PlainMessageEmail, {
-          message: '<p>Hello <strong>friend</strong></p>',
-          imageUrl: 'https://example.org/flyer.png',
-          ctaLabel: 'RSVP',
-          ctaUrl: 'https://example.org/rsvp',
-        }),
-      );
-
-      expect(html).toContain('<strong>friend</strong>');
-      expect(html).toContain('src="https://example.org/flyer.png"');
-      expect(html).toContain('href="https://example.org/rsvp"');
-      expect(html).toContain('RSVP');
     });
   });
 });

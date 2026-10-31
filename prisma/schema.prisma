@@ -182,6 +182,8 @@ model Person {
   emailStatus           EmailDeliveryStatus @default(DELIVERABLE) @map("email_status")
   emailBounceReason     String?             @map("email_bounce_reason") @db.Text
   emailBouncedAt        DateTime?           @map("email_bounced_at")
+  emailOptOut           Boolean             @default(false) @map("email_opt_out")
+  emailOptOutAt         DateTime?           @map("email_opt_out_at")
   profileToken          String?             @unique @map("profile_token") @db.VarChar(255)
   profileTokenExpiresAt DateTime?           @map("profile_token_expires_at")
   followUpStatus        FollowUpStatus?     @map("follow_up_status")
