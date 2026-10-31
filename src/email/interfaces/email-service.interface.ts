@@ -51,6 +51,8 @@ export interface CustomEmailData {
   teamName?: string;
   teamColor?: string;
   imageUrl?: string;
+  /** PLAIN renders a minimal letter-style layout; default is the styled campaign layout. */
+  layout?: 'STYLED' | 'PLAIN';
   emailType?: string;
   churchId?: string;
   personId?: string;

@@ -180,6 +180,7 @@ export class EmailService {
         contactEmail: person.church?.email || undefined,
         contactPhone: person.church?.phone || undefined,
         imageUrl: resolvedImageUrl,
+        layout: dto.layout,
         churchId,
         personId: person.id,
         sentByUserId,

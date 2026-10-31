@@ -17,6 +17,7 @@ import { AdminWelcomeEmail } from '../templates/admin-welcome.template';
 import { BirthdayGreetingEmail } from '../templates/birthday-greeting.template';
 import { BounceAdminAlertEmail } from '../templates/bounce-admin-alert.template';
 import { CustomBroadcastEmail } from '../templates/custom-broadcast.template';
+import { PlainMessageEmail } from '../templates/plain-message.template';
 import { RegistrationConfirmationEmail } from '../templates/registration-confirmation.template';
 
 @Injectable()
@@ -321,25 +322,37 @@ export class ResendEmailProvider implements IEmailService {
             contactPhone: data.contactPhone,
             imageUrl: data.imageUrl,
           })
-        : React.createElement(CustomBroadcastEmail, {
-            recipientName: data.recipientName,
-            subject: data.subject,
-            heading: data.heading,
-            message: data.message,
-            ctaLabel: data.ctaLabel,
-            ctaUrl: data.ctaUrl,
-            churchName: data.churchName,
-            contactEmail: data.contactEmail,
-            contactPhone: data.contactPhone,
-            eventTitle: data.eventTitle,
-            eventDate: data.eventDate,
-            eventLocation: data.eventLocation,
-            registrationNumber: data.registrationNumber,
-            qrCodeDataUrl: qrCodeDataUrlProp,
-            teamName: data.teamName,
-            teamColor: data.teamColor,
-            imageUrl: data.imageUrl,
-          });
+        : data.layout === 'PLAIN'
+          ? React.createElement(PlainMessageEmail, {
+              subject: data.subject,
+              heading: data.heading,
+              message: data.message,
+              ctaLabel: data.ctaLabel,
+              ctaUrl: data.ctaUrl,
+              churchName: data.churchName,
+              contactEmail: data.contactEmail,
+              contactPhone: data.contactPhone,
+              imageUrl: data.imageUrl,
+            })
+          : React.createElement(CustomBroadcastEmail, {
+              recipientName: data.recipientName,
+              subject: data.subject,
+              heading: data.heading,
+              message: data.message,
+              ctaLabel: data.ctaLabel,
+              ctaUrl: data.ctaUrl,
+              churchName: data.churchName,
+              contactEmail: data.contactEmail,
+              contactPhone: data.contactPhone,
+              eventTitle: data.eventTitle,
+              eventDate: data.eventDate,
+              eventLocation: data.eventLocation,
+              registrationNumber: data.registrationNumber,
+              qrCodeDataUrl: qrCodeDataUrlProp,
+              teamName: data.teamName,
+              teamColor: data.teamColor,
+              imageUrl: data.imageUrl,
+            });
 
       const [html, text] = await Promise.all([
         render(emailComponent),
@@ -443,25 +456,37 @@ export class ResendEmailProvider implements IEmailService {
                 contactPhone: item.contactPhone,
                 imageUrl: item.imageUrl,
               })
-            : React.createElement(CustomBroadcastEmail, {
-                recipientName: item.recipientName,
-                subject: item.subject,
-                heading: item.heading,
-                message: item.message,
-                ctaLabel: item.ctaLabel,
-                ctaUrl: item.ctaUrl,
-                churchName: item.churchName,
-                contactEmail: item.contactEmail,
-                contactPhone: item.contactPhone,
-                eventTitle: item.eventTitle,
-                eventDate: item.eventDate,
-                eventLocation: item.eventLocation,
-                registrationNumber: item.registrationNumber,
-                qrCodeDataUrl: item.qrCodeDataUrl,
-                teamName: item.teamName,
-                teamColor: item.teamColor,
-                imageUrl: item.imageUrl,
-              });
+            : item.layout === 'PLAIN'
+              ? React.createElement(PlainMessageEmail, {
+                  subject: item.subject,
+                  heading: item.heading,
+                  message: item.message,
+                  ctaLabel: item.ctaLabel,
+                  ctaUrl: item.ctaUrl,
+                  churchName: item.churchName,
+                  contactEmail: item.contactEmail,
+                  contactPhone: item.contactPhone,
+                  imageUrl: item.imageUrl,
+                })
+              : React.createElement(CustomBroadcastEmail, {
+                  recipientName: item.recipientName,
+                  subject: item.subject,
+                  heading: item.heading,
+                  message: item.message,
+                  ctaLabel: item.ctaLabel,
+                  ctaUrl: item.ctaUrl,
+                  churchName: item.churchName,
+                  contactEmail: item.contactEmail,
+                  contactPhone: item.contactPhone,
+                  eventTitle: item.eventTitle,
+                  eventDate: item.eventDate,
+                  eventLocation: item.eventLocation,
+                  registrationNumber: item.registrationNumber,
+                  qrCodeDataUrl: item.qrCodeDataUrl,
+                  teamName: item.teamName,
+                  teamColor: item.teamColor,
+                  imageUrl: item.imageUrl,
+                });
 
           const [html, text] = await Promise.all([
             render(emailComponent),
