@@ -349,6 +349,58 @@ describe('PeopleService', () => {
     });
   });
 
+  describe('update emailOptOut', () => {
+    it('should re-subscribe an unsubscribed person and clear emailOptOutAt', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        emailOptOut: true,
+        emailOptOutAt: new Date('2026-10-31'),
+      });
+      prismaMock.person.update.mockResolvedValue({ id: 'person-1' });
+
+      await service.update('person-1', { emailOptOut: false }, 'church-1');
+
+      expect(prismaMock.person.update).toHaveBeenCalledWith({
+        where: { id: 'person-1' },
+        data: { emailOptOut: false, emailOptOutAt: null },
+      });
+    });
+
+    it('should manually opt a person out and stamp emailOptOutAt', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        emailOptOut: false,
+      });
+      prismaMock.person.update.mockResolvedValue({ id: 'person-1' });
+
+      await service.update('person-1', { emailOptOut: true }, 'church-1');
+
+      expect(prismaMock.person.update).toHaveBeenCalledWith({
+        where: { id: 'person-1' },
+        data: { emailOptOut: true, emailOptOutAt: expect.any(Date) as Date },
+      });
+    });
+
+    it('should leave the opt-out timestamp untouched when the value is unchanged', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        emailOptOut: true,
+      });
+      prismaMock.person.update.mockResolvedValue({ id: 'person-1' });
+
+      await service.update(
+        'person-1',
+        { emailOptOut: true, firstName: 'Johnny' },
+        'church-1',
+      );
+
+      expect(prismaMock.person.update).toHaveBeenCalledWith({
+        where: { id: 'person-1' },
+        data: { firstName: 'Johnny' },
+      });
+    });
+  });
+
   describe('remove', () => {
     it('should delete person after verifying existence', async () => {
       prismaMock.person.findFirst.mockResolvedValue({ id: 'person-1' });

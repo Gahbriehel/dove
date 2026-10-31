@@ -423,7 +423,8 @@ export class PeopleService {
   ) {
     const existing = await this.findOne(id, userChurchId);
 
-    const { dateOfBirth, lastFollowUpAt, ...rest } = updatePersonDto;
+    const { dateOfBirth, lastFollowUpAt, emailOptOut, ...rest } =
+      updatePersonDto;
 
     const data: Prisma.PersonUpdateInput = { ...rest };
 
@@ -433,6 +434,11 @@ export class PeopleService {
 
     if (lastFollowUpAt !== undefined) {
       data.lastFollowUpAt = lastFollowUpAt ? new Date(lastFollowUpAt) : null;
+    }
+
+    if (emailOptOut !== undefined && emailOptOut !== existing.emailOptOut) {
+      data.emailOptOut = emailOptOut;
+      data.emailOptOutAt = emailOptOut ? new Date() : null;
     }
 
     if (

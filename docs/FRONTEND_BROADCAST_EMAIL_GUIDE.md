@@ -127,9 +127,9 @@ Person objects returned by the people endpoints now include:
 - **Compose screen**: when the admin picks a recipient group, add a note such as *"People who have unsubscribed will be skipped."*
 - **After sending**: if `results.totalOptedOut` is present, show it, for example *"2 people were skipped because they unsubscribed."*
 
-### Not available yet
+### Limits
 
-- **There is no way for an admin to re-subscribe someone.** `emailOptOut` is not editable through `PATCH /people/:id`. Don't show a toggle for it. If the church needs this, the backend needs a small addition first.
+- **Admins can re-subscribe (or manually unsubscribe) a person** through `PATCH /people/:id`. See [section 7](#7-update-re-subscribing-a-person-patch-peopleid).
 - **Unsubscribe applies per person, across all broadcast emails.** There are no topic preferences.
 
 ---
@@ -214,4 +214,71 @@ export interface PersonEmailPreferences {
   emailOptOut: boolean;
   emailOptOutAt: string | null;
 }
+
+// Body for PATCH /people/:id (all fields optional; emailOptOut is the new one)
+export interface UpdatePersonEmailPreferenceRequest {
+  emailOptOut?: boolean;
+}
 ```
+
+---
+
+## 7. Update: re-subscribing a person (`PATCH /people/:id`)
+
+> **For frontend:** this is a small, backward-compatible backend addition. Nothing you've already built breaks. It enables the **"Re-subscribe"** action for people who unsubscribed by mistake.
+
+`PATCH /people/:id` now accepts one more optional field:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `emailOptOut` | `boolean` | `false` = re-subscribe the person to broadcast emails. `true` = unsubscribe them manually (for example, they asked by phone). |
+
+`emailOptOutAt` is **set and cleared by the server** automatically. Don't send it.
+
+### Request
+
+```http
+PATCH /api/v1/people/91f67e75-3f2e-41ed-834d-add0d1448b2d
+Authorization: Bearer <accessToken>
+Content-Type: application/json
+
+{ "emailOptOut": false }
+```
+
+### Response `200 OK`
+
+The updated person, in the standard envelope:
+
+```json
+{
+  "success": true,
+  "message": "Person updated successfully",
+  "data": {
+    "id": "91f67e75-3f2e-41ed-834d-add0d1448b2d",
+    "firstName": "Emmanuel",
+    "emailOptOut": false,
+    "emailOptOutAt": null
+  },
+  "timestamp": "2026-11-01T09:00:00.000Z"
+}
+```
+
+(Other person fields are returned as usual and are omitted here.)
+
+After a manual unsubscribe (`{ "emailOptOut": true }`), `emailOptOutAt` is the current timestamp.
+
+### Behavior
+
+- **Takes effect immediately.** The person is included in the next broadcast after re-subscribing, and skipped after a manual unsubscribe.
+- **Idempotent.** Sending the same value again changes nothing, and the original `emailOptOutAt` is kept.
+- **Can be combined** with other person fields in the same `PATCH` request.
+- **Validation:** a non-boolean value (for example `"false"` as a string) returns `400`.
+- **Roles and church scope** are the same as for the other `PATCH /people/:id` updates. A person from another church returns `404`.
+- Only broadcast emails are affected. Registration, check-in and other system emails never depended on this flag.
+
+### Suggested UI
+
+- On the person profile, when `emailOptOut` is `true`, show the **"Unsubscribed"** badge with a **"Re-subscribe"** button.
+- Ask for confirmation first: *"Re-subscribe {name} to broadcast emails? Only do this if they asked to receive them again."* Someone who unsubscribed deliberately and is re-added without their consent may mark future emails as spam, which hurts delivery for everyone.
+- On success, update the badge from the `data.emailOptOut` value in the response.
+- Optional: a **"Mark as unsubscribed"** action (sends `{ "emailOptOut": true }`) for people who ask to be removed outside the email link.
