@@ -8,21 +8,43 @@ import {
   FollowUpStatus,
   Gender,
   MembershipStatus,
+  MessageChannel,
   Prisma,
 } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
+import { normalizePhoneOrThrow } from '../common/utils/phone.util';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
 import { QueryPersonDto } from './dto/query-person.dto';
 import { PromotePersonDto } from './dto/promote-person.dto';
+import { QueryPersonMessagesDto } from './dto/query-person-messages.dto';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const MESSAGE_PREVIEW_LENGTH = 140;
+
+const SENDER_SELECT = {
+  id: true,
+  firstName: true,
+  displayName: true,
+} satisfies Prisma.UserSelect;
+
+export interface PersonMessageEntry {
+  type: MessageChannel;
+  purpose: string;
+  at: Date;
+  by: { id: string; name: string } | null;
+  status: string;
+  preview: string;
+  refId: string;
+}
 
 @Injectable()
 export class PeopleService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createPersonDto: CreatePersonDto, userChurchId?: string) {
-    const { dateOfBirth, lastFollowUpAt, ...rest } = createPersonDto;
+    const { dateOfBirth, lastFollowUpAt, phone, ...rest } = createPersonDto;
 
     const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
@@ -46,6 +68,7 @@ export class PeopleService {
     return this.prisma.person.create({
       data: {
         ...rest,
+        ...(phone !== undefined && { phone: normalizePhoneOrThrow(phone) }),
         churchId,
         membershipStatus,
         followUpStatus,
@@ -423,10 +446,20 @@ export class PeopleService {
   ) {
     const existing = await this.findOne(id, userChurchId);
 
-    const { dateOfBirth, lastFollowUpAt, emailOptOut, ...rest } =
-      updatePersonDto;
+    const {
+      dateOfBirth,
+      lastFollowUpAt,
+      emailOptOut,
+      whatsappOptOut,
+      phone,
+      ...rest
+    } = updatePersonDto;
 
     const data: Prisma.PersonUpdateInput = { ...rest };
+
+    if (phone !== undefined) {
+      data.phone = normalizePhoneOrThrow(phone);
+    }
 
     if (dateOfBirth !== undefined) {
       data.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
@@ -442,6 +475,14 @@ export class PeopleService {
     }
 
     if (
+      whatsappOptOut !== undefined &&
+      whatsappOptOut !== existing.whatsappOptOut
+    ) {
+      data.whatsappOptOut = whatsappOptOut;
+      data.whatsappOptOutAt = whatsappOptOut ? new Date() : null;
+    }
+
+    if (
       updatePersonDto.followUpStatus === undefined &&
       updatePersonDto.membershipStatus &&
       updatePersonDto.membershipStatus !== MembershipStatus.VISITOR &&
@@ -454,6 +495,126 @@ export class PeopleService {
       where: { id },
       data,
     });
+  }
+
+  /**
+   * Merges email sends, birthday greetings and WhatsApp outreach into one
+   * newest-first timeline. WhatsApp birthday greetings are skipped because the
+   * outreach row that produced them is already listed, and email greetings are
+   * skipped when their send log exists.
+   */
+  async getMessages(
+    id: string,
+    query: QueryPersonMessagesDto,
+    userChurchId?: string,
+  ) {
+    const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
+
+    const person = await this.prisma.person.findFirst({
+      where: { id, churchId },
+      select: { id: true },
+    });
+    if (!person) {
+      throw new NotFoundException(`Person with ID "${id}" not found`);
+    }
+
+    const [emails, greetings, outreach] = await Promise.all([
+      this.prisma.emailSendLog.findMany({
+        where: { personId: id, churchId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.birthdayGreeting.findMany({
+        where: { personId: id, churchId, channel: MessageChannel.EMAIL },
+        include: { sentBy: { select: SENDER_SELECT } },
+      }),
+      this.prisma.outreachMessage.findMany({
+        where: { personId: id, churchId },
+        include: { sentBy: { select: SENDER_SELECT } },
+      }),
+    ]);
+
+    const senderIds = [
+      ...new Set(
+        emails.map((e) => e.sentByUserId).filter((s): s is string => !!s),
+      ),
+    ];
+    const senders = senderIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: senderIds } },
+          select: SENDER_SELECT,
+        })
+      : [];
+    const senderById = new Map(senders.map((u) => [u.id, u]));
+
+    const birthdayLogTimes = emails
+      .filter((e) => e.emailType === 'BIRTHDAY_GREETING')
+      .map((e) => e.createdAt.getTime());
+
+    const entries: PersonMessageEntry[] = [
+      ...emails.map((e) => ({
+        type: MessageChannel.EMAIL,
+        purpose: e.emailType,
+        at: e.createdAt,
+        by: this.formatSender(
+          e.sentByUserId,
+          senderById.get(e.sentByUserId ?? ''),
+        ),
+        status: 'SENT',
+        preview: this.preview(e.subject ?? ''),
+        refId: e.id,
+      })),
+      ...greetings
+        .filter(
+          (g) =>
+            !birthdayLogTimes.some(
+              (t) => Math.abs(t - g.createdAt.getTime()) <= DAY_MS,
+            ),
+        )
+        .map((g) => ({
+          type: MessageChannel.EMAIL,
+          purpose: 'BIRTHDAY_GREETING',
+          at: g.createdAt,
+          by: this.formatSender(g.sentByUserId, g.sentBy),
+          status: 'SENT',
+          preview: this.preview(g.subject ?? g.message),
+          refId: g.id,
+        })),
+      ...outreach.map((o) => ({
+        type: o.channel,
+        purpose: o.purpose,
+        at: o.openedAt,
+        by: this.formatSender(o.sentByUserId, o.sentBy),
+        status: o.status,
+        preview: this.preview(o.body),
+        refId: o.id,
+      })),
+    ].sort((a, b) => b.at.getTime() - a.at.getTime());
+
+    const total = entries.length;
+    return {
+      items: entries.slice((page - 1) * limit, page * limit),
+      meta: { total, page, limit, totalPages: Math.ceil(total / limit) || 1 },
+    };
+  }
+
+  private formatSender(
+    userId: string | null,
+    user?: { firstName: string; displayName: string | null } | null,
+  ) {
+    if (!userId || !user) return null;
+    return { id: userId, name: user.displayName?.trim() || user.firstName };
+  }
+
+  private preview(text: string): string {
+    const plain = text
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    return plain.length > MESSAGE_PREVIEW_LENGTH
+      ? `${plain.slice(0, MESSAGE_PREVIEW_LENGTH)}…`
+      : plain;
   }
 
   async promote(id: string, dto: PromotePersonDto, userChurchId?: string) {

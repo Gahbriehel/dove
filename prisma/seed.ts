@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { DEFAULT_MESSAGE_TEMPLATES } from './default-message-templates';
 
 const prisma = new PrismaClient();
 
@@ -122,6 +123,24 @@ async function main() {
     } else {
       console.log(`Super Admin user already exists: ${email}`);
     }
+  }
+
+  // 4. Seed default WhatsApp message templates (only for a church with none)
+  const existingTemplates = await prisma.messageTemplate.count({
+    where: { churchId: defaultChurch.id },
+  });
+  if (existingTemplates === 0) {
+    await prisma.messageTemplate.createMany({
+      data: DEFAULT_MESSAGE_TEMPLATES.map((t) => ({
+        ...t,
+        churchId: defaultChurch.id,
+      })),
+    });
+    console.log(
+      `Seeded ${DEFAULT_MESSAGE_TEMPLATES.length} default message templates`,
+    );
+  } else {
+    console.log('Message templates already exist, skipping defaults');
   }
 
   console.log('Seeding complete.');

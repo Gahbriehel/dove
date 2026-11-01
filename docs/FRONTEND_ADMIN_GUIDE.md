@@ -446,4 +446,15 @@ If your admin dashboard has an outreach task tab:
 * `COMPLETED` (Contact completed with notes/outcome)
 * `CANCELLED` (No longer needed)
 
+---
 
+## WhatsApp Outreach
+
+Staff send birthday, visitor follow-up and pastoral care messages over WhatsApp from the church number. The endpoints, warning codes and error codes are in `API_CONTRACT.md` (Message Templates, WhatsApp Outreach). The Olive screens are described in `olive/docs/whatsapp-outreach-implementation.md`.
+
+Typical flow:
+
+1. `POST /outreach/whatsapp/preview` to get the message, number and warnings. Show warnings before the admin sends.
+2. The admin edits the text if they want to, then `POST /outreach/whatsapp`, and open `https://wa.me/<whatsappDigits>?text=<encoded body>`.
+3. When the admin returns, ask whether they sent it and call `PATCH /outreach/:id/confirm`.
+4. After a confirmed pastoral check-in message, ask "Mark this check-in complete?" and use `PATCH /check-ins/:id`.

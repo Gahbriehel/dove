@@ -80,3 +80,50 @@ Positive
 Future
 
 Phase 4 introduces Church CRUD without requiring schema redesign.
+
+## ADR-006
+
+Title
+
+Member Messaging: Email + Manual WhatsApp, No SMS
+
+Status
+
+Accepted
+
+Decision
+
+The secure profile link is sent by email only.
+
+SMS is not used.
+
+Birthday, visitor follow-up and pastoral care messages are sent by staff from the church WhatsApp Business number using click-to-chat links. Dove composes the message from editable templates, logs it, and records whether it was sent.
+
+Birthday emails remain available alongside WhatsApp greetings.
+
+Reason
+
+SMS carries per-message cost and sender-ID registration overhead, and alphanumeric sender IDs cannot receive replies.
+
+Pastoral messages need to be personal and two-way.
+
+Click-to-chat has no per-message cost and needs no Meta business verification or template approval.
+
+Consequences
+
+Positive
+
+- Near-zero messaging cost.
+- Replies reach a shared church inbox with continuity across staff changes.
+- Templates keep messages personal (member name, admin name) and varied.
+
+Negative
+
+- Sending is manual; Dove cannot confirm delivery, only what staff confirm.
+- One church WhatsApp account supports at most four linked devices.
+
+Future
+
+WhatsApp Cloud API automation (e.g. automated reminders) and PWA push notifications can be added behind the same template and outreach log model.
+
+See `docs/PHASE2_MESSAGING_AND_PROFILE_IMPLEMENTATION.md`.

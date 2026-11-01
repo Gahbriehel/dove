@@ -4,6 +4,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { MembershipStatus } from '@prisma/client';
 import { DepartmentsService } from '../departments/departments.service';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
+import { callArg } from '../common/testing/mock.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProfileService } from './profile.service';
 
@@ -182,6 +183,55 @@ describe('ProfileService', () => {
       expect(result.message).toContain('magic link has been sent');
       expect(prismaMock.person.create).toHaveBeenCalled();
       expect(emailProviderMock.sendCustomBroadcast).toHaveBeenCalled();
+    });
+
+    it('matches an existing person by normalised or as-typed phone', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        firstName: 'John',
+        lastName: 'Doe',
+        email: null,
+        phone: '08034567890',
+      });
+      prismaMock.person.update.mockResolvedValue({});
+
+      await service.claim({ phone: '08034567890' });
+
+      expect(prismaMock.person.findFirst).toHaveBeenCalledWith({
+        where: {
+          churchId: 'church-1',
+          OR: [{ phone: '+2348034567890' }, { phone: '08034567890' }],
+        },
+      });
+    });
+
+    it('stores a new visitor phone in E.164 and drops an unusable one', async () => {
+      prismaMock.person.findFirst.mockResolvedValue(null);
+      prismaMock.person.create.mockResolvedValue({
+        id: 'new-1',
+        firstName: 'Sarah',
+        lastName: 'Guest',
+        email: 'sarah@example.com',
+        phone: null,
+      });
+      prismaMock.person.update.mockResolvedValue({});
+
+      await service.claim({
+        email: 'sarah@example.com',
+        phone: '0803 456 7890',
+      });
+      expect(callArg(prismaMock.person.create, 0).data.phone).toBe(
+        '+2348034567890',
+      );
+
+      await service.claim({ email: 'sarah@example.com', phone: '12' });
+      expect(callArg(prismaMock.person.create, 1).data.phone).toBeNull();
+    });
+
+    it('rejects a phone-only claim when the number is unusable', async () => {
+      await expect(service.claim({ phone: '12' })).rejects.toThrow(
+        BadRequestException,
+      );
     });
 
     it('should throw NotFoundException if church slug is invalid', async () => {

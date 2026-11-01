@@ -24,6 +24,7 @@ import { Roles } from '../common/decorators/roles.decorator';
 import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
 import { CreatePersonDto } from './dto/create-person.dto';
 import { PromotePersonDto } from './dto/promote-person.dto';
+import { QueryPersonMessagesDto } from './dto/query-person-messages.dto';
 import { QueryPersonDto } from './dto/query-person.dto';
 import { UpdatePersonDto } from './dto/update-person.dto';
 import { PeopleService } from './people.service';
@@ -88,6 +89,22 @@ export class PeopleController {
       { header: 'Created At', value: (r) => r.createdAt },
     ]);
     sendCsv(res, csvFilename('people'), csv);
+  }
+
+  @Get(':id/messages')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'COORDINATOR')
+  @ResponseMessage('Message history retrieved successfully')
+  @ApiOperation({
+    summary:
+      'Timeline of every email, birthday greeting and WhatsApp message sent to a person, newest first',
+  })
+  @ApiResponse({ status: 404, description: 'Person not found' })
+  async getMessages(
+    @Param('id') id: string,
+    @Query() query: QueryPersonMessagesDto,
+    @CurrentUser('churchId') userChurchId: string,
+  ) {
+    return this.peopleService.getMessages(id, query, userChurchId);
   }
 
   @Get(':id')

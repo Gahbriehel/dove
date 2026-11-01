@@ -9,6 +9,13 @@ export enum BirthdayStatusFilter {
   MISSED = 'MISSED',
 }
 
+export enum GreetedFilter {
+  ANY = 'any',
+  EMAIL = 'email',
+  WHATSAPP = 'whatsapp',
+  NONE = 'none',
+}
+
 export class QueryBirthdayDto {
   @ApiPropertyOptional({
     description: 'Filter by target year (defaults to current calendar year)',
@@ -40,6 +47,15 @@ export class QueryBirthdayDto {
   @IsEnum(BirthdayStatusFilter)
   @IsOptional()
   status?: BirthdayStatusFilter = BirthdayStatusFilter.ALL;
+
+  @ApiPropertyOptional({
+    description:
+      'Filter by which channels have a greeting this year. Independent of status, which stays email-based.',
+    enum: GreetedFilter,
+  })
+  @IsEnum(GreetedFilter)
+  @IsOptional()
+  greeted?: GreetedFilter;
 
   @ApiPropertyOptional({
     description: 'Search by first name, last name, or email',

@@ -45,6 +45,15 @@ export class MonthlyBirthdayStatDto {
   @ApiProperty({ example: 1 })
   missed: number;
 
+  @ApiProperty({ description: 'People with a WhatsApp greeting', example: 4 })
+  whatsappSent: number;
+
+  @ApiProperty({
+    description: 'People with a greeting on at least one channel',
+    example: 11,
+  })
+  anyChannelSent: number;
+
   @ApiProperty({ example: 83.33 })
   handlingRate: number;
 }
@@ -76,6 +85,18 @@ export class BirthdayAnalyticsResponseDto {
     example: 10,
   })
   missedCount: number;
+
+  @ApiProperty({
+    description: 'People with a WhatsApp greeting this period',
+    example: 20,
+  })
+  whatsappSent: number;
+
+  @ApiProperty({
+    description: 'People with a greeting on at least one channel this period',
+    example: 100,
+  })
+  anyChannelSent: number;
 
   @ApiProperty({
     description: 'Handling rate percentage (completed / total * 100)',

@@ -38,6 +38,23 @@ enum CheckInReason {
   GENERAL_CHECK_IN
 }
 
+enum MessageChannel {
+  EMAIL
+  WHATSAPP
+}
+
+enum OutreachPurpose {
+  BIRTHDAY
+  VISITOR_FOLLOW_UP
+  PASTORAL_CHECK_IN
+}
+
+enum OutreachStatus {
+  OPENED
+  CONFIRMED_SENT
+  NOT_SENT
+}
+
 enum CheckInStatus {
   SCHEDULED
   COMPLETED
@@ -76,17 +93,19 @@ enum EmailDeliveryStatus {
 }
 
 model Church {
-  id         String   @id @default(uuid())
-  name       String   @db.VarChar(255)
-  slug       String   @unique @db.VarChar(100)
-  branchName String?  @map("branch_name") @db.VarChar(255)
-  campusName String?  @map("campus_name") @db.VarChar(255)
-  address    String?  @db.Text
-  phone      String?  @db.VarChar(50)
-  email      String?  @db.VarChar(255)
-  websiteUrl String?  @map("website_url") @db.VarChar(255)
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id             String   @id @default(uuid())
+  name           String   @db.VarChar(255)
+  slug           String   @unique @db.VarChar(100)
+  shortName      String?  @map("short_name") @db.VarChar(50)
+  branchName     String?  @map("branch_name") @db.VarChar(255)
+  campusName     String?  @map("campus_name") @db.VarChar(255)
+  address        String?  @db.Text
+  phone          String?  @db.VarChar(50)
+  whatsappNumber String?  @map("whatsapp_number") @db.VarChar(20)
+  email          String?  @db.VarChar(255)
+  websiteUrl     String?  @map("website_url") @db.VarChar(255)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   users              User[]
   people             Person[]
@@ -95,6 +114,8 @@ model Church {
   contactSubmissions ContactSubmission[]
   birthdayGreetings  BirthdayGreeting[]
   pastoralCheckIns   PastoralCheckIn[]
+  messageTemplates   MessageTemplate[]
+  outreachMessages   OutreachMessage[]
 
   @@map("churches")
 }
@@ -106,6 +127,7 @@ model User {
   passwordHash      String              @map("password_hash") @db.VarChar(255)
   firstName         String              @map("first_name") @db.VarChar(100)
   lastName          String              @map("last_name") @db.VarChar(100)
+  displayName       String?             @map("display_name") @db.VarChar(100)
   phone             String?             @db.VarChar(50)
   isActive          Boolean             @default(true) @map("is_active")
   lastActive        DateTime?           @map("last_active")
@@ -121,6 +143,7 @@ model User {
   sentBirthdayGreetings BirthdayGreeting[] @relation("SentBirthdayGreetings")
   createdCheckIns       PastoralCheckIn[]  @relation("CheckInCreatedBy")
   assignedCheckIns      PastoralCheckIn[]  @relation("CheckInAssignedTo")
+  outreachMessages      OutreachMessage[]  @relation("OutreachSentBy")
 
   @@index([churchId])
   @@map("users")
@@ -184,6 +207,8 @@ model Person {
   emailBouncedAt        DateTime?           @map("email_bounced_at")
   emailOptOut           Boolean             @default(false) @map("email_opt_out")
   emailOptOutAt         DateTime?           @map("email_opt_out_at")
+  whatsappOptOut        Boolean             @default(false) @map("whatsapp_opt_out")
+  whatsappOptOutAt      DateTime?           @map("whatsapp_opt_out_at")
   profileToken          String?             @unique @map("profile_token") @db.VarChar(255)
   profileTokenExpiresAt DateTime?           @map("profile_token_expires_at")
   followUpStatus        FollowUpStatus?     @map("follow_up_status")
@@ -197,6 +222,7 @@ model Person {
   birthdayGreetings     BirthdayGreeting[]
   departmentMemberships DepartmentMembership[]
   pastoralCheckIns      PastoralCheckIn[]
+  outreachMessages      OutreachMessage[]
 
   @@index([churchId])
   @@index([email])
@@ -400,26 +426,27 @@ model ContactSubmission {
 }
 
 model BirthdayGreeting {
-  id            String   @id @default(uuid())
-  churchId      String   @map("church_id")
-  personId      String   @map("person_id")
-  sentByUserId  String   @map("sent_by_user_id")
+  id            String         @id @default(uuid())
+  churchId      String         @map("church_id")
+  personId      String         @map("person_id")
+  sentByUserId  String         @map("sent_by_user_id")
   year          Int
-  subject       String   @db.VarChar(255)
-  heading       String?  @db.VarChar(255)
-  message       String   @db.Text
-  imageUrl      String?  @map("image_url") @db.VarChar(512)
-  ctaLabel      String?  @map("cta_label") @db.VarChar(100)
-  ctaUrl        String?  @map("cta_url") @db.VarChar(512)
-  resendEmailId String?  @map("resend_email_id") @db.VarChar(255)
-  createdAt     DateTime @default(now()) @map("created_at")
-  updatedAt     DateTime @updatedAt @map("updated_at")
+  channel       MessageChannel @default(EMAIL)
+  subject       String?        @db.VarChar(255)
+  heading       String?        @db.VarChar(255)
+  message       String         @db.Text
+  imageUrl      String?        @map("image_url") @db.VarChar(512)
+  ctaLabel      String?        @map("cta_label") @db.VarChar(100)
+  ctaUrl        String?        @map("cta_url") @db.VarChar(512)
+  resendEmailId String?        @map("resend_email_id") @db.VarChar(255)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
 
   church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
   person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
   sentBy User   @relation("SentBirthdayGreetings", fields: [sentByUserId], references: [id], onDelete: Cascade)
 
-  @@unique([personId, year], name: "unique_person_year_greeting")
+  @@unique([personId, year, channel], name: "unique_person_year_channel_greeting")
   @@index([churchId])
   @@index([churchId, year])
   @@index([personId])
@@ -474,10 +501,11 @@ model PastoralCheckIn {
   createdAt    DateTime      @default(now()) @map("created_at")
   updatedAt    DateTime      @updatedAt @map("updated_at")
 
-  church     Church  @relation(fields: [churchId], references: [id], onDelete: Cascade)
-  person     Person  @relation(fields: [personId], references: [id], onDelete: Cascade)
-  createdBy  User    @relation("CheckInCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  assignedTo User?   @relation("CheckInAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  church     Church            @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  person     Person            @relation(fields: [personId], references: [id], onDelete: Cascade)
+  createdBy  User              @relation("CheckInCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  assignedTo User?             @relation("CheckInAssignedTo", fields: [assignedToId], references: [id], onDelete: SetNull)
+  outreach   OutreachMessage[]
 
   @@index([churchId])
   @@index([personId])
@@ -485,4 +513,57 @@ model PastoralCheckIn {
   @@index([assignedToId])
   @@index([scheduledFor])
   @@map("pastoral_check_ins")
+}
+
+model MessageTemplate {
+  id            String          @id @default(uuid())
+  churchId      String          @map("church_id")
+  channel       MessageChannel  @default(WHATSAPP)
+  purpose       OutreachPurpose
+  checkInReason CheckInReason?  @map("check_in_reason")
+  name          String          @db.VarChar(100)
+  body          String          @db.Text
+  isActive      Boolean         @default(true) @map("is_active")
+  createdById   String?         @map("created_by_id")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  church   Church            @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  outreach OutreachMessage[]
+
+  @@index([churchId, channel, purpose, isActive])
+  @@map("message_templates")
+}
+
+// WhatsApp outreach sent by staff via click-to-chat. EmailSendLog stays the
+// source of truth for email because it is keyed by Resend's id for bounces.
+model OutreachMessage {
+  id           String          @id @default(uuid())
+  churchId     String          @map("church_id")
+  personId     String          @map("person_id")
+  sentByUserId String          @map("sent_by_user_id")
+  channel      MessageChannel  @default(WHATSAPP)
+  purpose      OutreachPurpose
+  checkInId    String?         @map("check_in_id")
+  birthdayYear Int?            @map("birthday_year")
+  templateId   String?         @map("template_id")
+  toPhone      String          @map("to_phone") @db.VarChar(20)
+  body         String          @db.Text
+  status       OutreachStatus  @default(OPENED)
+  openedAt     DateTime        @default(now()) @map("opened_at")
+  confirmedAt  DateTime?       @map("confirmed_at")
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  church   Church           @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  person   Person           @relation(fields: [personId], references: [id], onDelete: Cascade)
+  sentBy   User             @relation("OutreachSentBy", fields: [sentByUserId], references: [id], onDelete: Restrict)
+  checkIn  PastoralCheckIn? @relation(fields: [checkInId], references: [id], onDelete: SetNull)
+  template MessageTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+
+  @@index([churchId, createdAt])
+  @@index([personId, createdAt])
+  @@index([sentByUserId, status])
+  @@index([purpose, status])
+  @@map("outreach_messages")
 }

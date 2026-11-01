@@ -203,6 +203,98 @@ Admin and Super Admin only. Deletes a contact submission.
 
 ---
 
+# Phone Numbers
+
+Every phone number written through the API is stored in E.164 (`+2348034567890`). Nigerian numbers may be typed as `0803…`, `803…`, `+234 803…` or `234803…`. An invalid number returns `400` with `Please enter a valid phone number`. Public endpoints (registration, profile claim) do not block on a bad number: it is dropped and a warning is logged.
+
+---
+
+# Church and Admin Identity
+
+PATCH /settings/church accepts two new fields, and GET returns both:
+
+- `shortName` (max 50): the name used in messages. Falls back to the full name.
+- `whatsappNumber`: the church WhatsApp number, normalised to E.164. Send an empty string to clear.
+
+GET /settings/profile and PATCH /settings/profile accept and return `displayName` (max 100). Messages are signed with `displayName`, falling back to `firstName`.
+
+---
+
+# Message Templates
+
+Roles: `GET` for SUPER_ADMIN, ADMIN, COORDINATOR. Writes for SUPER_ADMIN, ADMIN.
+
+GET /message-templates?channel=&purpose=&checkInReason=&includeInactive=
+
+POST /message-templates
+
+PATCH /message-templates/:id
+
+DELETE /message-templates/:id
+
+Templates already used in an outreach record are deactivated instead of deleted. The response says which happened (`deleted` / `deactivated`).
+
+POST /message-templates/preview
+
+Body `{ "body": "..." }`. Returns `{ body, unknownPlaceholders }` rendered with sample values.
+
+Allowed placeholders (case and spacing are ignored): `{{firstName}}`, `{{adminName}}`, `{{churchName}}`. Saving a template with any other placeholder returns `400` listing the bad tokens. `body` is limited to 1,000 characters. `checkInReason` is only allowed when `purpose` is `PASTORAL_CHECK_IN`.
+
+---
+
+# WhatsApp Outreach
+
+Roles: SUPER_ADMIN, ADMIN, COORDINATOR.
+
+POST /outreach/whatsapp/preview
+
+Body: `{ personId, purpose, checkInId?, templateId? }`. Saves nothing. Returns `person`, `toPhone`, `whatsappDigits`, `template`, `alternatives`, `body`, `lastOutreach` and `warnings`.
+
+When `templateId` is omitted a template is chosen: active templates for the purpose, preferring the check-in's reason, skipping the one last used for this person, then random.
+
+Warning codes: `NO_PHONE`, `INVALID_PHONE`, `WHATSAPP_OPT_OUT`, `NO_TEMPLATE`, `ALREADY_GREETED_THIS_YEAR`, `CONTACTED_RECENTLY`.
+
+Errors (`400` with `code`): `PERSON_NOT_IN_CHURCH`, `CHECK_IN_PERSON_MISMATCH`, `TEMPLATE_NOT_FOUND`.
+
+POST /outreach/whatsapp
+
+Body: `{ personId, purpose, checkInId?, templateId?, body }` (`body` 1 to 1,000 characters, stored as sent). Records the message as `OPENED`. Returns `409` with `code` `NO_PHONE`, `INVALID_PHONE` or `WHATSAPP_OPT_OUT`.
+
+PATCH /outreach/:id/confirm
+
+Body: `{ sent: boolean }`. Only the user who opened it, or an ADMIN / SUPER_ADMIN, can confirm.
+
+- `sent: false`: status `NOT_SENT`.
+- `sent: true`: status `CONFIRMED_SENT` and, in one transaction, `person.lastFollowUpAt` is set. `VISITOR_FOLLOW_UP` moves a `PENDING` follow-up to `IN_PROGRESS`. `BIRTHDAY` records a WhatsApp `BirthdayGreeting`. `PASTORAL_CHECK_IN` does not complete the check-in; use `PATCH /check-ins/:id`.
+- Confirming twice changes nothing. A confirmed message cannot be changed to not sent (`409`).
+
+GET /outreach?personId=&purpose=&status=&sentByUserId=&from=&to=&page=&limit=
+
+Paginated log: `{ items, meta }`.
+
+GET /outreach/today?limit=
+
+Calculated on request in Africa/Lagos time. Returns `{ birthdays, checkIns, visitorFollowUps, unconfirmed }`, each `{ total, items }` and capped at `limit` (default 20).
+
+- `birthdays`: birthdays today with no WhatsApp greeting this year, with an `emailGreeted` flag.
+- `checkIns`: scheduled check-ins due by the end of today, those assigned to the caller first.
+- `visitorFollowUps`: visitors with a pending follow-up, at least 2 days old, with no confirmed message in the last 7 days.
+- `unconfirmed`: the caller's `OPENED` messages older than 15 minutes.
+
+GET /people/:id/messages?page=&limit=
+
+One timeline of emails, birthday greetings and WhatsApp messages, newest first: `{ type, purpose, at, by, status, preview, refId }`.
+
+PATCH /people/:id accepts `whatsappOptOut` (like `emailOptOut`; `whatsappOptOutAt` is maintained automatically).
+
+---
+
+# Birthdays by channel
+
+`GET /birthdays` keeps `greeting` as the email greeting and adds `whatsappGreeting` and `greetedChannels`. The `status` filter still means email. Add `greeted=any|email|whatsapp|none` to filter by channel. `GET /birthdays/analytics` adds `whatsappSent` and `anyChannelSent` to the totals and to each month.
+
+---
+
 # Email Bounces
 
 GET /email-bounces

@@ -35,7 +35,7 @@ a link on screen during services. Anyone can visit it — no login required.
 1. Person scans QR code / opens the shared link
 2. Enters their email address or phone number
 3. System looks up their existing Person record:
-     → Found:  generates a magic link and sends it to their email/phone
+     → Found:  generates a secure link and sends it to their email
      → Not found: creates a new VISITOR Person record, then sends a magic link
 4. Person clicks the link → lands on their own profile form (pre-filled)
 5. They review and update: name, phone, gender, date of birth, address

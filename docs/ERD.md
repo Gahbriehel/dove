@@ -43,6 +43,15 @@ The database schema is already designed for this transition.
 
 ---
 
+Fields added for WhatsApp outreach
+
+| Field | Type | Purpose |
+|---|---|---|
+| `shortName` | String? | Name used in member-facing messages, for example "Amazing Grace". Falls back to `name`. |
+| `whatsappNumber` | String? | Church WhatsApp Business number, E.164 |
+
+---
+
 ## Users
 
 Administrative users.
@@ -60,6 +69,14 @@ Relationships
 
 - Belongs to Church
 - Has many Roles
+
+---
+
+Fields added for WhatsApp outreach
+
+| Field | Type | Purpose |
+|---|---|---|
+| `displayName` | String? | Name staff sign messages with, for example "Pastor John". Falls back to `firstName`. |
 
 ---
 
@@ -110,6 +127,15 @@ The following fields are added to `Person` in Phase 2. No existing fields are ch
 | `followUpStatus` | Enum? | `PENDING \| IN_PROGRESS \| CONVERTED \| INACTIVE` (defaults to PENDING for visitors, null for non-visitors) |
 
 The `profileToken` pattern mirrors `Registration.token` — already proven in Phase 1.
+
+WhatsApp Outreach Fields Added
+
+| Field | Type | Purpose |
+|---|---|---|
+| `whatsappOptOut` | Boolean | Set by an admin when someone asks not to be messaged on WhatsApp. Defaults to false. |
+| `whatsappOptOutAt` | DateTime? | When the opt-out was recorded |
+
+`phone` is stored in E.164 format (`+2348034567890`). See `scripts/normalize-phones.ts` for the one-off migration of older values.
 
 ---
 
@@ -244,6 +270,48 @@ Belongs to
 
 - Team
 - Game
+
+---
+
+## BirthdayGreeting (channel per greeting)
+
+`channel` (`EMAIL | WHATSAPP`, default `EMAIL`) was added. A person can have one greeting per year per channel: the unique key is `(personId, year, channel)`. `subject` is nullable because WhatsApp greetings have none.
+
+---
+
+## MessageTemplate (Phase 2)
+
+Editable message text for staff outreach.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `channel` | `MessageChannel` | Defaults to `WHATSAPP` |
+| `purpose` | `OutreachPurpose` | `BIRTHDAY \| VISITOR_FOLLOW_UP \| PASTORAL_CHECK_IN` |
+| `checkInReason` | `CheckInReason?` | Only for `PASTORAL_CHECK_IN`. Null suits any reason. |
+| `name` | String | Shown in the template picker |
+| `body` | Text | Up to 1,000 characters. Placeholders: `{{firstName}}`, `{{adminName}}`, `{{churchName}}` |
+| `isActive` | Boolean | Soft delete for templates already used in outreach |
+
+Belongs to Church.
+
+---
+
+## OutreachMessage (Phase 2)
+
+Log of WhatsApp messages staff open from Dove. `EmailSendLog` stays the log for email because it is keyed by Resend's id for bounce handling.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `purpose` | `OutreachPurpose` | Why the message was sent |
+| `status` | `OutreachStatus` | `OPENED \| CONFIRMED_SENT \| NOT_SENT` |
+| `toPhone` | String | E.164 number at the time of sending |
+| `body` | Text | Final text, after any edits |
+| `birthdayYear` | Int? | Set for birthday messages |
+| `checkInId` | String? | Related pastoral check-in |
+| `templateId` | String? | Template the text started from |
+| `openedAt` / `confirmedAt` | DateTime | When the admin opened WhatsApp, and when they confirmed |
+
+Belongs to Church, Person and User (sender); optionally to PastoralCheckIn and MessageTemplate.
 
 ---
 

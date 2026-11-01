@@ -11,6 +11,10 @@ import * as crypto from 'crypto';
 import { DepartmentsService } from '../departments/departments.service';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
 import type { IEmailService } from '../email/interfaces/email-service.interface';
+import {
+  normalizePhone,
+  normalizePhoneOrThrow,
+} from '../common/utils/phone.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClaimProfileDto } from './dto/claim-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -29,7 +33,12 @@ export class ProfileService {
 
   async claim(dto: ClaimProfileDto): Promise<{ message: string }> {
     const rawEmail = dto.email?.trim().toLowerCase();
-    const rawPhone = dto.phone?.trim();
+    const submittedPhone = dto.phone?.trim();
+    // Public endpoint: an unusable number is ignored rather than rejected.
+    const rawPhone = submittedPhone ? normalizePhone(submittedPhone) : null;
+    if (submittedPhone && !rawPhone) {
+      this.logger.warn('Ignoring invalid phone number on profile claim');
+    }
 
     if (!rawEmail && !rawPhone) {
       throw new BadRequestException(
@@ -63,7 +72,12 @@ export class ProfileService {
     // 2. Lookup existing Person or create visitor
     const conditions: Prisma.PersonWhereInput[] = [];
     if (rawEmail) conditions.push({ email: rawEmail });
-    if (rawPhone) conditions.push({ phone: rawPhone });
+    if (rawPhone) {
+      conditions.push({ phone: rawPhone });
+      if (submittedPhone && submittedPhone !== rawPhone) {
+        conditions.push({ phone: submittedPhone });
+      }
+    }
 
     let person = await this.prisma.person.findFirst({
       where: {
@@ -287,7 +301,8 @@ export class ProfileService {
     if (lastName !== undefined) personUpdateData.lastName = lastName.trim();
     if (email !== undefined)
       personUpdateData.email = email.trim().toLowerCase();
-    if (phone !== undefined) personUpdateData.phone = phone.trim();
+    if (phone !== undefined)
+      personUpdateData.phone = normalizePhoneOrThrow(phone);
     if (gender !== undefined) personUpdateData.gender = gender;
     if (address !== undefined)
       personUpdateData.address = address?.trim() || null;

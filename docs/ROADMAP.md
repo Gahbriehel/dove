@@ -46,12 +46,19 @@ This is the public front door to the church's digital relationship with each mem
 Authentication for members is tokenised and passwordless:
 
 1. Person visits the public profile page
-2. Submits their email or phone
-3. Receives a short-lived magic link via email/SMS
+2. Submits their email address
+3. Receives a short-lived secure link by email (SMS is not used, see ADR-006)
 4. Clicks the link → lands on their pre-filled profile form
 5. Reviews and updates their details
 
 Admin authentication (JWT with username + password) remains separate and unchanged.
+
+**WhatsApp Outreach (manual, no API)**
+
+Staff send birthday, visitor follow-up and pastoral care messages from the church
+WhatsApp Business number using click-to-chat links. Dove writes the message from
+editable templates, logs it and records whether staff confirmed it was sent.
+See ADR-006 and `PHASE2_MESSAGING_AND_PROFILE_IMPLEMENTATION.md`.
 
 **PWA Introduction via the Profile Page**
 

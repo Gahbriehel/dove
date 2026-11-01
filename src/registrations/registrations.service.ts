@@ -23,6 +23,7 @@ import {
 } from '../email/utils/calendar.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
+import { normalizePhone } from '../common/utils/phone.util';
 import { QueryRegistrationDto } from './dto/query-registration.dto';
 import { RegisterDto } from './dto/register.dto';
 
@@ -41,15 +42,26 @@ export class RegistrationsService {
       firstName,
       lastName,
       email,
-      phone,
+      phone: rawPhone,
       gender,
       dateOfBirth,
       address,
       googleCalendarSync,
     } = registerDto;
 
-    if (!email && !phone) {
+    if (!email && !rawPhone) {
       throw new BadRequestException('Either email or phone must be provided');
+    }
+
+    // Registration stays forgiving: an unusable number is dropped, not rejected.
+    const phone = rawPhone ? normalizePhone(rawPhone) : null;
+    if (rawPhone && !phone) {
+      this.logger.warn(
+        `Ignoring invalid phone number on registration for event ${eventId}`,
+      );
+    }
+    if (!email && !phone) {
+      throw new BadRequestException('Please enter a valid phone number');
     }
 
     const event = await this.prisma.event.findUnique({
@@ -96,7 +108,10 @@ export class RegistrationsService {
 
         if (phone) {
           personByPhone = await tx.person.findFirst({
-            where: { churchId, phone },
+            where: {
+              churchId,
+              OR: [{ phone }, { phone: rawPhone }],
+            },
           });
         }
 

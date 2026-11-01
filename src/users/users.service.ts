@@ -9,6 +9,7 @@ import { Prisma } from '@prisma/client';
 import type { ActiveUserData } from '../common/decorators/current-user.decorator';
 import { PrismaService } from '../prisma/prisma.service';
 import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
+import { normalizePhoneOrThrow } from '../common/utils/phone.util';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -151,6 +152,11 @@ export class UsersService {
   async update(id: string, dto: UpdateUserDto, userChurchId?: string) {
     const existingUser = await this.findOne(id, userChurchId);
 
+    const targetPhone =
+      dto.phone !== undefined
+        ? normalizePhoneOrThrow(dto.phone)
+        : existingUser.phone;
+
     if (dto.email && dto.email !== existingUser.email) {
       const emailTaken = await this.prisma.user.findUnique({
         where: { email: dto.email },
@@ -190,8 +196,6 @@ export class UsersService {
     const targetEmail = dto.email ?? existingUser.email;
     const targetFirstName = dto.firstName ?? existingUser.firstName;
     const targetLastName = dto.lastName ?? existingUser.lastName;
-    const targetPhone = dto.phone ?? existingUser.phone;
-
     let targetMembershipStatus = dto.membershipStatus;
     if (!targetMembershipStatus && dto.role) {
       const upperRole = dto.role.toUpperCase();
@@ -237,7 +241,7 @@ export class UsersService {
         ...(dto.firstName !== undefined && { firstName: dto.firstName }),
         ...(dto.lastName !== undefined && { lastName: dto.lastName }),
         ...(dto.email !== undefined && { email: dto.email }),
-        ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.phone !== undefined && { phone: targetPhone }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
       },
       select: USER_SELECT,

@@ -7,13 +7,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Prisma } from '@prisma/client';
+import { MessageChannel, Prisma } from '@prisma/client';
+import {
+  resolveBirthdayTargetYear,
+  utcMidnight,
+} from '../common/utils/birthday-year.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
 import type { IEmailService } from '../email/interfaces/email-service.interface';
 import { SendBirthdayGreetingDto } from './dto/send-birthday-greeting.dto';
 import {
   BirthdayStatusFilter,
+  GreetedFilter,
   QueryBirthdayDto,
 } from './dto/query-birthday.dto';
 import {
@@ -84,44 +89,31 @@ export class BirthdaysService {
       );
     }
 
-    const now = new Date();
-    const todayUtcMidnight = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
     const dob = new Date(person.dateOfBirth);
-    const birthMonth = dob.getUTCMonth();
-    const birthDate = dob.getUTCDate();
-    const currentCalendarYear = todayUtcMidnight.getUTCFullYear();
 
-    let targetYear = dto.year;
-    if (!targetYear) {
-      const thisYearBirthday = new Date(
-        Date.UTC(currentCalendarYear, birthMonth, birthDate),
-      );
-      if (thisYearBirthday.getTime() >= todayUtcMidnight.getTime()) {
-        targetYear = currentCalendarYear;
-      } else {
-        const existingGreetingCurrentYear =
-          await this.prisma.birthdayGreeting.findUnique({
-            where: {
-              unique_person_year_greeting: {
-                personId: person.id,
-                year: currentCalendarYear,
-              },
+    const targetYear =
+      dto.year ??
+      (await resolveBirthdayTargetYear(dob, async (year) => {
+        const existing = await this.prisma.birthdayGreeting.findUnique({
+          where: {
+            unique_person_year_channel_greeting: {
+              personId: person.id,
+              year,
+              channel: MessageChannel.EMAIL,
             },
-          });
-        targetYear = existingGreetingCurrentYear
-          ? currentCalendarYear + 1
-          : currentCalendarYear;
-      }
-    }
+          },
+          select: { id: true },
+        });
+        return !!existing;
+      }));
 
     // Check for existing greeting record before attempting creation
     const existingGreeting = await this.prisma.birthdayGreeting.findUnique({
       where: {
-        unique_person_year_greeting: {
+        unique_person_year_channel_greeting: {
           personId: person.id,
           year: targetYear,
+          channel: MessageChannel.EMAIL,
         },
       },
       include: {
@@ -177,6 +169,7 @@ export class BirthdaysService {
           personId: person.id,
           sentByUserId: userId,
           year: targetYear,
+          channel: MessageChannel.EMAIL,
           subject,
           heading,
           message,
@@ -202,9 +195,10 @@ export class BirthdaysService {
       ) {
         const latest = await this.prisma.birthdayGreeting.findUnique({
           where: {
-            unique_person_year_greeting: {
+            unique_person_year_channel_greeting: {
               personId: person.id,
               year: targetYear,
+              channel: MessageChannel.EMAIL,
             },
           },
           include: {
@@ -296,10 +290,7 @@ export class BirthdaysService {
     userChurchId?: string,
   ): Promise<BirthdayListResponseDto> {
     const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
-    const now = new Date();
-    const todayUtcMidnight = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
+    const todayUtcMidnight = utcMidnight();
     const targetYear = query.year || todayUtcMidnight.getUTCFullYear();
 
     const [people, greetings] = await Promise.all([
@@ -337,8 +328,13 @@ export class BirthdaysService {
     ]);
 
     const greetingsMap = new Map<string, (typeof greetings)[0]>();
+    const whatsappGreetingsMap = new Map<string, (typeof greetings)[0]>();
     for (const g of greetings) {
-      greetingsMap.set(g.personId, g);
+      if (g.channel === MessageChannel.WHATSAPP) {
+        whatsappGreetingsMap.set(g.personId, g);
+      } else {
+        greetingsMap.set(g.personId, g);
+      }
     }
 
     const items: BirthdayPersonItemDto[] = [];
@@ -377,7 +373,16 @@ export class BirthdaysService {
       const turningAge = targetYear - dob.getUTCFullYear();
 
       const greetingRecord = greetingsMap.get(p.id);
+      const whatsappRecord = whatsappGreetingsMap.get(p.id);
       const isGreeted = !!greetingRecord;
+      const greetedChannels: MessageChannel[] = [
+        ...(greetingRecord ? [MessageChannel.EMAIL] : []),
+        ...(whatsappRecord ? [MessageChannel.WHATSAPP] : []),
+      ];
+
+      if (!this.matchesGreetedFilter(query.greeted, greetedChannels)) {
+        continue;
+      }
 
       let status: BirthdayStatusFilter;
       if (isGreeted) {
@@ -409,6 +414,7 @@ export class BirthdaysService {
         turningAge,
         status,
         isGreeted,
+        greetedChannels,
         greeting: greetingRecord
           ? {
               id: greetingRecord.id,
@@ -425,6 +431,20 @@ export class BirthdaysService {
                 firstName: greetingRecord.sentBy.firstName,
                 lastName: greetingRecord.sentBy.lastName,
                 email: greetingRecord.sentBy.email,
+              },
+            }
+          : null,
+        whatsappGreeting: whatsappRecord
+          ? {
+              id: whatsappRecord.id,
+              year: whatsappRecord.year,
+              message: whatsappRecord.message,
+              sentAt: whatsappRecord.createdAt,
+              sentBy: {
+                id: whatsappRecord.sentBy.id,
+                firstName: whatsappRecord.sentBy.firstName,
+                lastName: whatsappRecord.sentBy.lastName,
+                email: whatsappRecord.sentBy.email,
               },
             }
           : null,
@@ -469,10 +489,7 @@ export class BirthdaysService {
     userChurchId?: string,
   ): Promise<BirthdayAnalyticsResponseDto> {
     const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
-    const now = new Date();
-    const todayUtcMidnight = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
+    const todayUtcMidnight = utcMidnight();
     const targetYear = query.year || todayUtcMidnight.getUTCFullYear();
 
     const [people, greetings] = await Promise.all([
@@ -493,22 +510,36 @@ export class BirthdaysService {
         },
         select: {
           personId: true,
+          channel: true,
         },
       }),
     ]);
 
-    const greetedPersonIds = new Set(greetings.map((g) => g.personId));
+    const greetedPersonIds = new Set(
+      greetings
+        .filter((g) => g.channel === MessageChannel.EMAIL)
+        .map((g) => g.personId),
+    );
+    const whatsappPersonIds = new Set(
+      greetings
+        .filter((g) => g.channel === MessageChannel.WHATSAPP)
+        .map((g) => g.personId),
+    );
 
     const monthlyStats: Array<{
       total: number;
       completed: number;
       pending: number;
       missed: number;
+      whatsappSent: number;
+      anyChannelSent: number;
     }> = Array.from({ length: 12 }, () => ({
       total: 0,
       completed: 0,
       pending: 0,
       missed: 0,
+      whatsappSent: 0,
+      anyChannelSent: 0,
     }));
 
     for (const p of people) {
@@ -517,6 +548,12 @@ export class BirthdaysService {
       const birthDate = dob.getUTCDate();
 
       monthlyStats[monthIdx].total++;
+
+      const hasWhatsapp = whatsappPersonIds.has(p.id);
+      if (hasWhatsapp) monthlyStats[monthIdx].whatsappSent++;
+      if (hasWhatsapp || greetedPersonIds.has(p.id)) {
+        monthlyStats[monthIdx].anyChannelSent++;
+      }
 
       const isGreeted = greetedPersonIds.has(p.id);
       if (isGreeted) {
@@ -546,6 +583,8 @@ export class BirthdaysService {
           completed: stat.completed,
           pending: stat.pending,
           missed: stat.missed,
+          whatsappSent: stat.whatsappSent,
+          anyChannelSent: stat.anyChannelSent,
           handlingRate,
         };
       },
@@ -555,6 +594,8 @@ export class BirthdaysService {
     let completedCount = 0;
     let pendingCount = 0;
     let missedCount = 0;
+    let whatsappSent = 0;
+    let anyChannelSent = 0;
 
     if (query.month && query.month >= 1 && query.month <= 12) {
       const targetMonthStat = monthlyBreakdown[query.month - 1];
@@ -562,12 +603,16 @@ export class BirthdaysService {
       completedCount = targetMonthStat.completed;
       pendingCount = targetMonthStat.pending;
       missedCount = targetMonthStat.missed;
+      whatsappSent = targetMonthStat.whatsappSent;
+      anyChannelSent = targetMonthStat.anyChannelSent;
     } else {
       for (const stat of monthlyStats) {
         totalBirthdays += stat.total;
         completedCount += stat.completed;
         pendingCount += stat.pending;
         missedCount += stat.missed;
+        whatsappSent += stat.whatsappSent;
+        anyChannelSent += stat.anyChannelSent;
       }
     }
 
@@ -583,9 +628,29 @@ export class BirthdaysService {
       completedCount,
       pendingCount,
       missedCount,
+      whatsappSent,
+      anyChannelSent,
       handlingRate,
       monthlyBreakdown,
     };
+  }
+
+  private matchesGreetedFilter(
+    filter: GreetedFilter | undefined,
+    channels: MessageChannel[],
+  ): boolean {
+    switch (filter) {
+      case GreetedFilter.ANY:
+        return channels.length > 0;
+      case GreetedFilter.EMAIL:
+        return channels.includes(MessageChannel.EMAIL);
+      case GreetedFilter.WHATSAPP:
+        return channels.includes(MessageChannel.WHATSAPP);
+      case GreetedFilter.NONE:
+        return channels.length === 0;
+      default:
+        return true;
+    }
   }
 
   private resolveImageUrl(imageUrl?: string): string | undefined {

@@ -5,11 +5,11 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
-import { MembershipStatus, Prisma } from '@prisma/client';
+import { MembershipStatus, MessageChannel, Prisma } from '@prisma/client';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { BirthdaysService } from './birthdays.service';
-import { BirthdayStatusFilter } from './dto/query-birthday.dto';
+import { BirthdayStatusFilter, GreetedFilter } from './dto/query-birthday.dto';
 
 describe('BirthdaysService', () => {
   let service: BirthdaysService;
@@ -148,6 +148,7 @@ describe('BirthdaysService', () => {
             personId: 'person-1',
             sentByUserId: 'admin-1',
             year: 2026,
+            channel: MessageChannel.EMAIL,
             subject: 'Happy Birthday Jane! (36)',
             heading: 'Celebrating Jane Doe!',
             message: 'Wishing you grace and peace.',
@@ -351,6 +352,7 @@ describe('BirthdaysService', () => {
           id: 'g-1',
           personId: 'p-1',
           year: 2026,
+          channel: MessageChannel.EMAIL,
           subject: 'Happy Birthday Alice',
           heading: 'Celebrating You',
           message: 'Happy birthday!',
@@ -429,6 +431,156 @@ describe('BirthdaysService', () => {
     });
   });
 
+  describe('per-channel greetings', () => {
+    const people = [
+      {
+        id: 'p-1',
+        firstName: 'Alice',
+        lastName: 'Smith',
+        email: 'alice@example.com',
+        phone: '111',
+        membershipStatus: MembershipStatus.MEMBER,
+        dateOfBirth: new Date('1990-10-15T00:00:00.000Z'),
+      },
+      {
+        id: 'p-2',
+        firstName: 'Bob',
+        lastName: 'Jones',
+        email: null,
+        phone: '222',
+        membershipStatus: MembershipStatus.MEMBER,
+        dateOfBirth: new Date('1985-10-20T00:00:00.000Z'),
+      },
+      {
+        id: 'p-3',
+        firstName: 'Cara',
+        lastName: 'Lee',
+        email: null,
+        phone: null,
+        membershipStatus: MembershipStatus.MEMBER,
+        dateOfBirth: new Date('1985-10-25T00:00:00.000Z'),
+      },
+    ];
+    const sentBy = {
+      id: 'admin-1',
+      firstName: 'Admin',
+      lastName: 'User',
+      email: 'admin@dove.church',
+    };
+    const greetings = [
+      {
+        id: 'g-email',
+        personId: 'p-1',
+        year: 2026,
+        channel: MessageChannel.EMAIL,
+        subject: 'Happy Birthday',
+        heading: null,
+        message: 'Email text',
+        imageUrl: null,
+        ctaLabel: null,
+        ctaUrl: null,
+        createdAt: new Date('2026-10-15T08:00:00.000Z'),
+        sentBy,
+      },
+      {
+        id: 'g-wa-1',
+        personId: 'p-1',
+        year: 2026,
+        channel: MessageChannel.WHATSAPP,
+        subject: null,
+        message: 'WhatsApp text',
+        createdAt: new Date('2026-10-15T09:00:00.000Z'),
+        sentBy,
+      },
+      {
+        id: 'g-wa-2',
+        personId: 'p-2',
+        year: 2026,
+        channel: MessageChannel.WHATSAPP,
+        subject: null,
+        message: 'WhatsApp text',
+        createdAt: new Date('2026-10-20T09:00:00.000Z'),
+        sentBy,
+      },
+    ];
+
+    beforeEach(() => {
+      prismaMock.person.findMany.mockResolvedValue(people);
+      prismaMock.birthdayGreeting.findMany.mockResolvedValue(greetings);
+    });
+
+    it('keeps greeting as the email greeting and adds whatsappGreeting', async () => {
+      const result = await service.getBirthdays({ year: 2026 }, 'church-1');
+      const byId = Object.fromEntries(result.data.map((p) => [p.id, p]));
+
+      expect(byId['p-1'].greeting?.id).toBe('g-email');
+      expect(byId['p-1'].whatsappGreeting?.id).toBe('g-wa-1');
+      expect(byId['p-1'].greetedChannels).toEqual([
+        MessageChannel.EMAIL,
+        MessageChannel.WHATSAPP,
+      ]);
+
+      expect(byId['p-2'].greeting).toBeNull();
+      expect(byId['p-2'].whatsappGreeting?.id).toBe('g-wa-2');
+      expect(byId['p-2'].greetedChannels).toEqual([MessageChannel.WHATSAPP]);
+      expect(byId['p-3'].greetedChannels).toEqual([]);
+    });
+
+    it('keeps status and isGreeted based on email only', async () => {
+      const result = await service.getBirthdays({ year: 2026 }, 'church-1');
+      const bob = result.data.find((p) => p.id === 'p-2');
+
+      expect(bob?.isGreeted).toBe(false);
+      expect(bob?.status).not.toBe(BirthdayStatusFilter.COMPLETED);
+    });
+
+    it.each([
+      [GreetedFilter.ANY, ['p-1', 'p-2']],
+      [GreetedFilter.EMAIL, ['p-1']],
+      [GreetedFilter.WHATSAPP, ['p-1', 'p-2']],
+      [GreetedFilter.NONE, ['p-3']],
+    ])('filters greeted=%s', async (greeted, expected) => {
+      const result = await service.getBirthdays(
+        { year: 2026, greeted },
+        'church-1',
+      );
+      expect(result.data.map((p) => p.id).sort()).toEqual(expected);
+    });
+
+    it('looks up the existing greeting on the email channel only', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'p-1',
+        firstName: 'Alice',
+        lastName: 'Smith',
+        email: 'alice@example.com',
+        dateOfBirth: new Date('1990-01-05T00:00:00.000Z'),
+        church: { name: 'Church' },
+      });
+      prismaMock.birthdayGreeting.findUnique.mockResolvedValue(null);
+      prismaMock.birthdayGreeting.create.mockRejectedValue(new Error('stop'));
+
+      await expect(
+        service.sendBirthdayGreeting(
+          { personId: 'p-1', subject: 's', message: 'm', year: 2026 },
+          'admin-1',
+          'church-1',
+        ),
+      ).rejects.toThrow('stop');
+
+      expect(prismaMock.birthdayGreeting.findUnique).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: {
+            unique_person_year_channel_greeting: {
+              personId: 'p-1',
+              year: 2026,
+              channel: MessageChannel.EMAIL,
+            },
+          },
+        }),
+      );
+    });
+  });
+
   describe('getBirthdayAnalytics', () => {
     it('should accurately compute overall metrics and 12-month breakdown', async () => {
       const mockPeople = [
@@ -438,7 +590,12 @@ describe('BirthdaysService', () => {
         { id: 'p-4', dateOfBirth: new Date('1988-12-30T00:00:00.000Z') }, // Future (Greeted)
       ];
 
-      const mockGreetings = [{ personId: 'p-2' }, { personId: 'p-4' }];
+      const mockGreetings = [
+        { personId: 'p-2', channel: MessageChannel.EMAIL },
+        { personId: 'p-4', channel: MessageChannel.EMAIL },
+        { personId: 'p-1', channel: MessageChannel.WHATSAPP },
+        { personId: 'p-2', channel: MessageChannel.WHATSAPP },
+      ];
 
       prismaMock.person.findMany.mockResolvedValue(mockPeople);
       prismaMock.birthdayGreeting.findMany.mockResolvedValue(mockGreetings);
@@ -450,6 +607,8 @@ describe('BirthdaysService', () => {
 
       expect(result.totalBirthdays).toBe(4);
       expect(result.completedCount).toBe(2);
+      expect(result.whatsappSent).toBe(2);
+      expect(result.anyChannelSent).toBe(3);
       expect(result.handlingRate).toBe(50);
       expect(result.monthlyBreakdown.length).toBe(12);
 
@@ -458,6 +617,8 @@ describe('BirthdaysService', () => {
       expect(janStat?.completed).toBe(1);
       expect(janStat?.missed).toBe(1);
       expect(janStat?.handlingRate).toBe(50);
+      expect(janStat?.whatsappSent).toBe(2);
+      expect(janStat?.anyChannelSent).toBe(2);
 
       const decStat = result.monthlyBreakdown.find((m) => m.month === 12);
       expect(decStat?.total).toBe(2);

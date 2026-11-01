@@ -11,4 +11,13 @@ export class UpdatePersonDto extends PartialType(CreatePersonDto) {
   @IsBoolean()
   @IsOptional()
   emailOptOut?: boolean;
+
+  @ApiPropertyOptional({
+    description:
+      'Set to true when a person asks not to be contacted on WhatsApp (for example replies "please stop"), or false to clear it. whatsappOptOutAt is maintained automatically.',
+    example: true,
+  })
+  @IsBoolean()
+  @IsOptional()
+  whatsappOptOut?: boolean;
 }

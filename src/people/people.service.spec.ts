@@ -6,6 +6,7 @@ import {
   Gender,
   MembershipStatus,
 } from '@prisma/client';
+import { callArg } from '../common/testing/mock.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { PeopleService } from './people.service';
 
@@ -24,6 +25,10 @@ describe('PeopleService', () => {
       update: jest.Mock;
       delete: jest.Mock;
     };
+    emailSendLog: { findMany: jest.Mock };
+    birthdayGreeting: { findMany: jest.Mock };
+    outreachMessage: { findMany: jest.Mock };
+    user: { findMany: jest.Mock };
   };
 
   beforeEach(async () => {
@@ -40,6 +45,10 @@ describe('PeopleService', () => {
         update: jest.fn(),
         delete: jest.fn(),
       },
+      emailSendLog: { findMany: jest.fn().mockResolvedValue([]) },
+      birthdayGreeting: { findMany: jest.fn().mockResolvedValue([]) },
+      outreachMessage: { findMany: jest.fn().mockResolvedValue([]) },
+      user: { findMany: jest.fn().mockResolvedValue([]) },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -494,6 +503,228 @@ describe('PeopleService', () => {
           'church-1',
         ),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('phone numbers', () => {
+    it('stores a created phone number in E.164', async () => {
+      prismaMock.church.findUnique.mockResolvedValue({ id: 'church-1' });
+      prismaMock.person.create.mockResolvedValue({ id: 'person-1' });
+
+      await service.create(
+        { firstName: 'A', lastName: 'B', phone: '0803 456 7890' },
+        'church-1',
+      );
+
+      expect(callArg(prismaMock.person.create, 0).data.phone).toBe(
+        '+2348034567890',
+      );
+    });
+
+    it('rejects an invalid phone number on create', async () => {
+      prismaMock.church.findUnique.mockResolvedValue({ id: 'church-1' });
+
+      await expect(
+        service.create(
+          { firstName: 'A', lastName: 'B', phone: '12345' },
+          'church-1',
+        ),
+      ).rejects.toThrow('Please enter a valid phone number');
+      expect(prismaMock.person.create).not.toHaveBeenCalled();
+    });
+
+    it('normalises the phone number on update and clears it when blank', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({ id: 'person-1' });
+      prismaMock.person.update.mockResolvedValue({ id: 'person-1' });
+
+      await service.update(
+        'person-1',
+        { phone: '+234 803 456 7890' },
+        'church-1',
+      );
+      expect(callArg(prismaMock.person.update, 0).data.phone).toBe(
+        '+2348034567890',
+      );
+
+      await service.update('person-1', { phone: '' }, 'church-1');
+      expect(callArg(prismaMock.person.update, 1).data.phone).toBeNull();
+    });
+
+    it('rejects an invalid phone number on update', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({ id: 'person-1' });
+      await expect(
+        service.update('person-1', { phone: 'abc' }, 'church-1'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(prismaMock.person.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('update whatsappOptOut', () => {
+    it('opts a person out and stamps whatsappOptOutAt', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        whatsappOptOut: false,
+      });
+      prismaMock.person.update.mockResolvedValue({ id: 'person-1' });
+
+      await service.update('person-1', { whatsappOptOut: true }, 'church-1');
+
+      const data = callArg(prismaMock.person.update, 0).data;
+      expect(data.whatsappOptOut).toBe(true);
+      expect(data.whatsappOptOutAt).toBeInstanceOf(Date);
+    });
+
+    it('clears whatsappOptOutAt when re-subscribing', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        whatsappOptOut: true,
+        whatsappOptOutAt: new Date(),
+      });
+      prismaMock.person.update.mockResolvedValue({ id: 'person-1' });
+
+      await service.update('person-1', { whatsappOptOut: false }, 'church-1');
+
+      const data = callArg(prismaMock.person.update, 0).data;
+      expect(data.whatsappOptOut).toBe(false);
+      expect(data.whatsappOptOutAt).toBeNull();
+    });
+
+    it('leaves the timestamp alone when the value is unchanged', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        whatsappOptOut: true,
+      });
+      prismaMock.person.update.mockResolvedValue({ id: 'person-1' });
+
+      await service.update('person-1', { whatsappOptOut: true }, 'church-1');
+
+      const data = callArg(prismaMock.person.update, 0).data;
+      expect(data.whatsappOptOutAt).toBeUndefined();
+    });
+  });
+
+  describe('getMessages', () => {
+    const sender = { id: 'u-1', firstName: 'Grace', displayName: null };
+
+    it('merges email, greetings and outreach newest first', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({ id: 'person-1' });
+      prismaMock.emailSendLog.findMany.mockResolvedValue([
+        {
+          id: 'e-1',
+          emailType: 'CUSTOM_BROADCAST',
+          createdAt: new Date('2026-10-10T10:00:00Z'),
+          sentByUserId: 'u-1',
+          subject: 'Service update',
+        },
+      ]);
+      prismaMock.user.findMany.mockResolvedValue([
+        { id: 'u-1', firstName: 'Grace', displayName: 'Sis. Grace' },
+      ]);
+      prismaMock.outreachMessage.findMany.mockResolvedValue([
+        {
+          id: 'o-1',
+          channel: 'WHATSAPP',
+          purpose: 'PASTORAL_CHECK_IN',
+          openedAt: new Date('2026-10-12T10:00:00Z'),
+          sentByUserId: 'u-1',
+          sentBy: sender,
+          status: 'CONFIRMED_SENT',
+          body: 'x'.repeat(200),
+        },
+      ]);
+
+      const result = await service.getMessages('person-1', {}, 'church-1');
+
+      expect(result.items.map((i) => i.refId)).toEqual(['o-1', 'e-1']);
+      expect(result.items[0]).toMatchObject({
+        type: 'WHATSAPP',
+        status: 'CONFIRMED_SENT',
+        by: { id: 'u-1', name: 'Grace' },
+      });
+      expect(result.items[0].preview).toHaveLength(141);
+      expect(result.items[1].by).toEqual({ id: 'u-1', name: 'Sis. Grace' });
+      expect(result.meta.total).toBe(2);
+    });
+
+    it('does not list an email birthday greeting twice', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({ id: 'person-1' });
+      prismaMock.emailSendLog.findMany.mockResolvedValue([
+        {
+          id: 'e-1',
+          emailType: 'BIRTHDAY_GREETING',
+          createdAt: new Date('2026-10-15T08:00:01Z'),
+          sentByUserId: null,
+          subject: 'Happy Birthday',
+        },
+      ]);
+      prismaMock.birthdayGreeting.findMany.mockResolvedValue([
+        {
+          id: 'g-1',
+          createdAt: new Date('2026-10-15T08:00:00Z'),
+          sentByUserId: 'u-1',
+          sentBy: sender,
+          subject: 'Happy Birthday',
+          message: 'Hi',
+        },
+      ]);
+
+      const result = await service.getMessages('person-1', {}, 'church-1');
+      expect(result.items.map((i) => i.refId)).toEqual(['e-1']);
+    });
+
+    it('keeps a birthday email that predates send logging', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({ id: 'person-1' });
+      prismaMock.birthdayGreeting.findMany.mockResolvedValue([
+        {
+          id: 'g-1',
+          createdAt: new Date('2026-10-05T08:00:00Z'),
+          sentByUserId: 'u-1',
+          sentBy: sender,
+          subject: null,
+          message: '<p>Happy <b>birthday</b></p>',
+        },
+      ]);
+
+      const result = await service.getMessages('person-1', {}, 'church-1');
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].preview).toBe('Happy birthday');
+    });
+
+    it('paginates the merged timeline', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({ id: 'person-1' });
+      prismaMock.outreachMessage.findMany.mockResolvedValue(
+        Array.from({ length: 5 }, (_, i) => ({
+          id: `o-${i}`,
+          channel: 'WHATSAPP',
+          purpose: 'BIRTHDAY',
+          openedAt: new Date(2026, 9, i + 1),
+          sentByUserId: 'u-1',
+          sentBy: sender,
+          status: 'OPENED',
+          body: 'hi',
+        })),
+      );
+
+      const result = await service.getMessages(
+        'person-1',
+        { page: 2, limit: 2 },
+        'church-1',
+      );
+
+      expect(result.items.map((i) => i.refId)).toEqual(['o-2', 'o-1']);
+      expect(result.meta).toEqual({
+        total: 5,
+        page: 2,
+        limit: 2,
+        totalPages: 3,
+      });
+    });
+
+    it('returns 404 for a person in another church', async () => {
+      prismaMock.person.findFirst.mockResolvedValue(null);
+      await expect(
+        service.getMessages('nope', {}, 'church-1'),
+      ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
 });

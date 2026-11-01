@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { MembershipStatus } from '@prisma/client';
+import { MembershipStatus, MessageChannel } from '@prisma/client';
 import { BirthdayStatusFilter } from './query-birthday.dto';
 
 export class BirthdayGreetingAuthorDto {
@@ -23,8 +23,8 @@ export class BirthdayGreetingRecordDto {
   @ApiProperty({ example: 2026 })
   year: number;
 
-  @ApiProperty({ example: 'Happy Birthday John!' })
-  subject: string;
+  @ApiPropertyOptional({ example: 'Happy Birthday John!' })
+  subject?: string | null;
 
   @ApiPropertyOptional({ example: 'Celebrating You!' })
   heading?: string | null;
@@ -40,6 +40,23 @@ export class BirthdayGreetingRecordDto {
 
   @ApiPropertyOptional({ example: 'https://example.org' })
   ctaUrl?: string | null;
+
+  @ApiProperty({ example: '2026-10-05T12:00:00.000Z' })
+  sentAt: Date;
+
+  @ApiProperty({ type: BirthdayGreetingAuthorDto })
+  sentBy: BirthdayGreetingAuthorDto;
+}
+
+export class WhatsappGreetingRecordDto {
+  @ApiProperty({ example: 'greeting-uuid' })
+  id: string;
+
+  @ApiProperty({ example: 2026 })
+  year: number;
+
+  @ApiProperty({ example: 'Happy birthday Sarah! 🎉' })
+  message: string;
 
   @ApiProperty({ example: '2026-10-05T12:00:00.000Z' })
   sentAt: Date;
@@ -88,8 +105,22 @@ export class BirthdayPersonItemDto {
   @ApiProperty({ example: false })
   isGreeted: boolean;
 
-  @ApiPropertyOptional({ type: BirthdayGreetingRecordDto })
+  @ApiProperty({
+    enum: MessageChannel,
+    isArray: true,
+    example: [MessageChannel.EMAIL],
+    description: 'Channels with a greeting recorded for the target year',
+  })
+  greetedChannels: MessageChannel[];
+
+  @ApiPropertyOptional({
+    type: BirthdayGreetingRecordDto,
+    description: 'The email greeting',
+  })
   greeting?: BirthdayGreetingRecordDto | null;
+
+  @ApiPropertyOptional({ type: WhatsappGreetingRecordDto })
+  whatsappGreeting?: WhatsappGreetingRecordDto | null;
 }
 
 export class BirthdayListResponseDto {

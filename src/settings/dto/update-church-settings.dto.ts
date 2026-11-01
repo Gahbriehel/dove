@@ -1,5 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsOptional, IsString, IsUrl } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  IsUrl,
+  MaxLength,
+} from 'class-validator';
 
 export class UpdateChurchSettingsDto {
   @ApiPropertyOptional({
@@ -17,6 +23,27 @@ export class UpdateChurchSettingsDto {
   @IsOptional()
   @IsString()
   churchName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Short name used in member-facing messages (falls back to the full name when empty)',
+    example: 'Amazing Grace',
+    maxLength: 50,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  shortName?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Church WhatsApp Business number. Stored in E.164 format; any common format is accepted. Send an empty string to clear it.',
+    example: '+2348012345678',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  whatsappNumber?: string;
 
   @ApiPropertyOptional({
     description: 'Campus or branch name',

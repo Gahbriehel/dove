@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Church } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { normalizePhoneOrThrow } from '../common/utils/phone.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateChurchSettingsDto } from './dto/update-church-settings.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
@@ -14,6 +15,7 @@ interface UserWithRelations {
   id: string;
   firstName: string;
   lastName: string;
+  displayName: string | null;
   email: string;
   phone: string | null;
   isActive: boolean;
@@ -41,12 +43,14 @@ export class SettingsService {
       name: church.name,
       churchName: church.name,
       slug: church.slug,
+      shortName: church.shortName ?? null,
       branchName: church.branchName ?? null,
       campusName: church.campusName ?? null,
       address: physicalOrAddress,
       physicalAddress: physicalOrAddress,
       phone: primaryOrPhone,
       primaryPhone: primaryOrPhone,
+      whatsappNumber: church.whatsappNumber ?? null,
       email: officialOrEmail,
       officialEmail: officialOrEmail,
       websiteUrl: websiteOrUrl,
@@ -92,7 +96,15 @@ export class SettingsService {
     const branchName = dto.branchName;
     const campusName = dto.campusName;
     const address = dto.address ?? dto.physicalAddress;
-    const phone = dto.phone ?? dto.primaryPhone;
+    const rawPhone = dto.phone ?? dto.primaryPhone;
+    const phone =
+      rawPhone !== undefined ? normalizePhoneOrThrow(rawPhone) : undefined;
+    const whatsappNumber =
+      dto.whatsappNumber !== undefined
+        ? normalizePhoneOrThrow(dto.whatsappNumber)
+        : undefined;
+    const shortName =
+      dto.shortName !== undefined ? dto.shortName.trim() || null : undefined;
     const email = dto.email ?? dto.officialEmail;
     const websiteUrl = dto.websiteUrl ?? dto.website;
 
@@ -100,10 +112,12 @@ export class SettingsService {
       where: { id: churchId },
       data: {
         ...(name !== undefined && { name }),
+        ...(shortName !== undefined && { shortName }),
         ...(branchName !== undefined && { branchName }),
         ...(campusName !== undefined && { campusName }),
         ...(address !== undefined && { address }),
         ...(phone !== undefined && { phone }),
+        ...(whatsappNumber !== undefined && { whatsappNumber }),
         ...(email !== undefined && { email }),
         ...(websiteUrl !== undefined && { websiteUrl }),
       },
@@ -120,6 +134,7 @@ export class SettingsService {
       id: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
+      displayName: user.displayName ?? null,
       email: user.email,
       phone: user.phone ?? null,
       isActive: user.isActive,
@@ -168,6 +183,9 @@ export class SettingsService {
       throw new NotFoundException(`User profile with ID "${userId}" not found`);
     }
 
+    const phone =
+      dto.phone !== undefined ? normalizePhoneOrThrow(dto.phone) : undefined;
+
     // Check email uniqueness if changing email
     if (dto.email && dto.email !== user.email) {
       const existingEmail = await this.prisma.user.findUnique({
@@ -201,7 +219,10 @@ export class SettingsService {
         ...(dto.firstName !== undefined && { firstName: dto.firstName }),
         ...(dto.lastName !== undefined && { lastName: dto.lastName }),
         ...(dto.email !== undefined && { email: dto.email }),
-        ...(dto.phone !== undefined && { phone: dto.phone }),
+        ...(dto.displayName !== undefined && {
+          displayName: dto.displayName.trim() || null,
+        }),
+        ...(phone !== undefined && { phone }),
         ...(passwordHash !== undefined && { passwordHash }),
       },
       include: {
