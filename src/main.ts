@@ -14,6 +14,8 @@ async function bootstrap() {
   });
   app.useLogger(app.get(PinoLogger));
   app.enableShutdownHooks();
+  // Behind a reverse proxy: use the real client IP (rate limiting, logs).
+  app.set('trust proxy', 1);
   const configService = app.get(ConfigService);
 
   // Static Assets (uploads)

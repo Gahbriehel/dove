@@ -211,6 +211,8 @@ model Person {
   whatsappOptOutAt      DateTime?           @map("whatsapp_opt_out_at")
   profileToken          String?             @unique @map("profile_token") @db.VarChar(255)
   profileTokenExpiresAt DateTime?           @map("profile_token_expires_at")
+  profileTokenOpenedAt  DateTime?           @map("profile_token_opened_at")
+  namesConfirmed        Boolean             @default(true) @map("names_confirmed")
   followUpStatus        FollowUpStatus?     @map("follow_up_status")
   followUpNotes         String?             @map("follow_up_notes") @db.Text
   lastFollowUpAt        DateTime?           @map("last_follow_up_at")

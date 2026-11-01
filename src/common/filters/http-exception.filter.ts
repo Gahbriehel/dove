@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { Request, Response } from 'express';
+import { redactUrl } from '../utils/redact-url.util';
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
@@ -69,7 +70,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     if (status === HttpStatus.INTERNAL_SERVER_ERROR) {
       this.logger.error(
-        `Unhandled Exception on ${request.method} ${request.url}`,
+        `Unhandled Exception on ${request.method} ${redactUrl(request.url)}`,
         exception instanceof Error ? exception.stack : String(exception),
       );
     }
@@ -86,7 +87,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
             : 'InternalServerError',
       ...extraData,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path: redactUrl(request.url),
     });
   }
 }

@@ -7,7 +7,9 @@ import {
   Param,
   Patch,
   Post,
+  UseGuards,
 } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
@@ -22,12 +24,13 @@ export class ProfileController {
   constructor(private readonly profileService: ProfileService) {}
 
   @Post('claim')
+  @UseGuards(ThrottlerGuard)
   @HttpCode(HttpStatus.OK)
   @ResponseMessage('Profile claim requested')
   @ApiOperation({
     summary: 'Request a magic link to claim or update your church profile',
     description:
-      'Submits an email or phone number. If a matching person exists, a single-use 30-minute magic link is generated and sent. If not found, a new visitor record is created.',
+      'Submits an email (or a phone number matching a person with an email on file). A single-use 30-minute link is emailed. An unknown email creates a visitor record; an unknown phone creates nothing. Rate limited per email (1/60 s, 5/hour; excess requests get the same generic 200) and per IP (429).',
   })
   @ApiResponse({
     status: 200,
@@ -37,6 +40,7 @@ export class ProfileController {
     status: 400,
     description: 'Neither email nor phone was provided',
   })
+  @ApiResponse({ status: 429, description: 'Too many requests from this IP' })
   async claim(@Body() claimProfileDto: ClaimProfileDto) {
     return this.profileService.claim(claimProfileDto);
   }
@@ -54,7 +58,8 @@ export class ProfileController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Magic link is invalid or expired',
+    description:
+      "Link is invalid or expired. Body includes `code`: 'PROFILE_LINK_INVALID' or 'PROFILE_LINK_EXPIRED'",
   })
   async getByToken(@Param('token') token: string) {
     return this.profileService.getByToken(token);
@@ -74,7 +79,8 @@ export class ProfileController {
   })
   @ApiResponse({
     status: 400,
-    description: 'Invalid input, expired token, or invalid department ID',
+    description:
+      "Invalid input, invalid/expired token, or invalid department ID. `code` may be 'PROFILE_LINK_INVALID', 'PROFILE_LINK_EXPIRED', 'NAMES_REQUIRED' or 'DEPARTMENT_REQUIRED'",
   })
   async updateByToken(
     @Param('token') token: string,

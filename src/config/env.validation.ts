@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   validateSync,
 } from 'class-validator';
 
@@ -54,6 +55,10 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   APP_URL: string = 'http://localhost:3000';
+
+  @IsUrl({ require_tld: false })
+  @IsOptional()
+  PROFILE_URL?: string;
 
   @IsString()
   @IsOptional()

@@ -3,6 +3,7 @@ export default () => ({
   environment: process.env.NODE_ENV || 'development',
   loginUrl: process.env.LOGIN_URL || 'http://localhost:3000/login',
   appUrl: process.env.APP_URL || 'http://localhost:3000',
+  profileUrl: process.env.PROFILE_URL,
   resend: {
     apiKey: process.env.RESEND_API_KEY,
     webhookSecret: process.env.RESEND_WEBHOOK_SECRET,

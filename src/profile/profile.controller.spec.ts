@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { MembershipStatus } from '@prisma/client';
 import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
@@ -19,6 +20,7 @@ describe('ProfileController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ ttl: 60_000, limit: 60 }])],
       controllers: [ProfileController],
       providers: [
         {

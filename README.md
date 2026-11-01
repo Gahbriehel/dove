@@ -120,6 +120,10 @@ JWT_REFRESH_EXPIRES_IN="7d"
 
 SUPER_ADMIN_EMAIL="<super-admin-email>"
 SUPER_ADMIN_PASSWORD="<super-admin-password>"
+
+# Base URL of the member PWA profile page; the token is appended.
+# Production: https://app.abwog.org/profile (falls back to ${APP_URL}/profile)
+PROFILE_URL="https://app.abwog.org/profile"
 ```
 
 ### 3. Run the database (Docker)

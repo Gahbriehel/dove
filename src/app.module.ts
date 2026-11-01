@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { LoggerModule } from 'nestjs-pino';
+import { stdSerializers } from 'pino';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import configuration from './config/configuration';
 import { validate } from './config/env.validation';
@@ -31,6 +32,7 @@ import { OutreachModule } from './outreach/outreach.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { redactUrl } from './common/utils/redact-url.util';
 import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
@@ -43,6 +45,13 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     }),
     LoggerModule.forRoot({
       pinoHttp: {
+        // Profile tokens travel in the URL path; never write them to logs.
+        serializers: {
+          req: (req: Parameters<typeof stdSerializers.req>[0]) => {
+            const serialized = stdSerializers.req(req);
+            return { ...serialized, url: redactUrl(serialized.url) };
+          },
+        },
         transport:
           process.env.NODE_ENV !== 'production'
             ? {

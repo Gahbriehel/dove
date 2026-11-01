@@ -16,8 +16,48 @@ import {
   normalizePhoneOrThrow,
 } from '../common/utils/phone.util';
 import { PrismaService } from '../prisma/prisma.service';
+import { ClaimRateLimiter } from './claim-rate-limiter';
 import { ClaimProfileDto } from './dto/claim-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+
+const PROFILE_LINK_TTL_MS = 30 * 60 * 1000;
+/** After first opening a valid link, the form may be saved for this long. */
+const PROFILE_SAVE_GRACE_MS = 30 * 60 * 1000;
+const CLAIM_RESPONSE_MESSAGE =
+  'If an account or record matches this contact, a magic link has been sent.';
+
+const TOKEN_PERSON_INCLUDE = {
+  church: {
+    select: {
+      id: true,
+      name: true,
+      shortName: true,
+      slug: true,
+      branchName: true,
+      campusName: true,
+      email: true,
+      phone: true,
+      whatsappNumber: true,
+      websiteUrl: true,
+    },
+  },
+  departmentMemberships: {
+    include: {
+      department: {
+        select: { id: true, name: true, description: true },
+      },
+    },
+    orderBy: { joinedAt: 'asc' as const },
+  },
+} satisfies Prisma.PersonInclude;
+
+type TokenPerson = Prisma.PersonGetPayload<{
+  include: typeof TOKEN_PERSON_INCLUDE;
+}>;
+
+function linkError(message: string, code: string): BadRequestException {
+  return new BadRequestException({ message, code });
+}
 
 @Injectable()
 export class ProfileService {
@@ -27,6 +67,7 @@ export class ProfileService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly departmentsService: DepartmentsService,
+    private readonly claimRateLimiter: ClaimRateLimiter,
     @Inject(EMAIL_SERVICE)
     private readonly emailProvider: IEmailService,
   ) {}
@@ -86,124 +127,140 @@ export class ProfileService {
       },
     });
 
-    if (!person) {
-      // Derive default names if newly registered
-      const defaultFirstName = rawEmail
-        ? rawEmail.split('@')[0].replace(/[^a-zA-Z]/g, ' ') || 'Friend'
-        : 'Friend';
-      const capitalizedFirstName =
-        defaultFirstName.charAt(0).toUpperCase() + defaultFirstName.slice(1);
+    // Links are only ever emailed, so without an address there is nothing to do.
+    const recipientEmail = person?.email || rawEmail;
+    if (!recipientEmail) {
+      return { message: CLAIM_RESPONSE_MESSAGE };
+    }
 
+    // Over the per-email limit: answer exactly like a success and send nothing.
+    if (!this.claimRateLimiter.tryConsume(recipientEmail.toLowerCase())) {
+      return { message: CLAIM_RESPONSE_MESSAGE };
+    }
+
+    if (!person) {
       person = await this.prisma.person.create({
         data: {
           churchId,
-          firstName: capitalizedFirstName,
-          lastName: 'Guest',
-          email: rawEmail || null,
+          firstName: 'New',
+          lastName: 'Visitor',
+          namesConfirmed: false,
+          email: rawEmail,
           phone: rawPhone || null,
           membershipStatus: MembershipStatus.VISITOR,
         },
       });
     }
 
-    // 3. Generate secure magic link token (30-minute expiry)
+    // 3. Generate secure single-use token
     const token = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 30 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + PROFILE_LINK_TTL_MS);
 
     await this.prisma.person.update({
       where: { id: person.id },
       data: {
         profileToken: token,
         profileTokenExpiresAt: expiresAt,
+        profileTokenOpenedAt: null,
       },
     });
 
-    // 4. Send magic link email if email is present
-    const recipientEmail = person.email || rawEmail;
-    if (recipientEmail) {
-      const appUrl =
-        this.configService.get<string>('appUrl')?.replace(/\/+$/, '') ||
-        'http://localhost:3000';
-      const profileBaseUrl =
-        this.configService.get<string>('profileUrl')?.replace(/\/+$/, '') ||
-        `${appUrl}/profile`;
-      const magicLinkUrl = `${profileBaseUrl}/${token}`;
+    // 4. Send the secure link email
+    const appUrl =
+      this.configService.get<string>('appUrl')?.replace(/\/+$/, '') ||
+      'http://localhost:3000';
+    const profileBaseUrl =
+      this.configService.get<string>('profileUrl')?.replace(/\/+$/, '') ||
+      `${appUrl}/profile`;
+    const profileLinkUrl = `${profileBaseUrl}/${token}`;
+    const churchShortName = church.shortName?.trim() || church.name;
+    const greeting = person.namesConfirmed
+      ? `Hello ${person.firstName},`
+      : 'Hello,';
 
-      try {
-        await this.emailProvider.sendCustomBroadcast({
-          recipientEmail,
-          recipientName: `${person.firstName} ${person.lastName}`.trim(),
-          subject: `Your ${church.name} Profile Magic Link`,
-          heading: `Manage Your Church Profile`,
-          message: `Hello ${person.firstName}, here is your secure link to access and update your member profile, membership status, and departments. This link is valid for 30 minutes.`,
-          ctaLabel: `View & Update Profile`,
-          ctaUrl: magicLinkUrl,
-          churchName: church.name,
-          contactEmail: church.email || undefined,
-          contactPhone: church.phone || undefined,
-          churchId: church.id,
-          personId: person.id,
-          emailType: 'MAGIC_LINK',
-        });
-      } catch (error) {
-        this.logger.error(
-          `Failed to dispatch magic link email to ${recipientEmail}: ${error instanceof Error ? error.message : error}`,
-        );
-      }
+    try {
+      await this.emailProvider.sendCustomBroadcast({
+        recipientEmail,
+        recipientName: person.namesConfirmed
+          ? `${person.firstName} ${person.lastName}`.trim()
+          : recipientEmail,
+        subject: `Update your details with ${churchShortName}`,
+        heading: 'Your secure link',
+        message: `${greeting} use the button below to update your details with ${churchShortName}. The link expires in 30 minutes and can be used once.`,
+        ctaLabel: 'Update my details',
+        ctaUrl: profileLinkUrl,
+        churchName: church.name,
+        contactEmail: church.email || undefined,
+        contactPhone: church.phone || undefined,
+        churchId: church.id,
+        personId: person.id,
+        emailType: 'MAGIC_LINK',
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to dispatch profile link email to ${recipientEmail}: ${error instanceof Error ? error.message : error}`,
+      );
     }
 
-    return {
-      message:
-        'If an account or record matches this contact, a magic link has been sent.',
-    };
+    return { message: CLAIM_RESPONSE_MESSAGE };
   }
 
-  async getByToken(token: string) {
+  /**
+   * Single place that decides whether a profile token may be used, so the GET
+   * and PATCH rules cannot drift apart.
+   */
+  private async resolveToken(
+    token: string,
+    { forUpdate }: { forUpdate: boolean },
+  ): Promise<TokenPerson> {
     if (!token || token.trim() === '') {
-      throw new BadRequestException('Token is required');
+      throw linkError('Token is required', 'PROFILE_LINK_INVALID');
     }
 
     const person = await this.prisma.person.findUnique({
       where: { profileToken: token },
-      include: {
-        church: {
-          select: {
-            id: true,
-            name: true,
-            slug: true,
-            branchName: true,
-            campusName: true,
-            email: true,
-            phone: true,
-            websiteUrl: true,
-          },
-        },
-        departmentMemberships: {
-          include: {
-            department: {
-              select: {
-                id: true,
-                name: true,
-                description: true,
-              },
-            },
-          },
-          orderBy: { joinedAt: 'asc' },
-        },
-      },
+      include: TOKEN_PERSON_INCLUDE,
     });
 
     if (!person) {
-      throw new BadRequestException('Invalid or expired magic link');
+      throw linkError('Invalid or expired magic link', 'PROFILE_LINK_INVALID');
     }
 
-    if (
-      !person.profileTokenExpiresAt ||
-      person.profileTokenExpiresAt < new Date()
-    ) {
-      throw new BadRequestException(
+    const now = Date.now();
+    const expiresAt = person.profileTokenExpiresAt;
+    if (!expiresAt) {
+      throw linkError(
         'Magic link has expired. Please request a new one.',
+        'PROFILE_LINK_EXPIRED',
       );
+    }
+
+    if (expiresAt.getTime() >= now) return person;
+
+    // Expired: a form opened in time may still be saved during the grace window.
+    const openedAt = person.profileTokenOpenedAt;
+    const withinGrace =
+      forUpdate &&
+      openedAt &&
+      openedAt.getTime() <= expiresAt.getTime() &&
+      now <= openedAt.getTime() + PROFILE_SAVE_GRACE_MS;
+    if (!withinGrace) {
+      throw linkError(
+        'Magic link has expired. Please request a new one.',
+        'PROFILE_LINK_EXPIRED',
+      );
+    }
+    return person;
+  }
+
+  async getByToken(token: string) {
+    const person = await this.resolveToken(token, { forUpdate: false });
+
+    if (!person.profileTokenOpenedAt) {
+      await this.prisma.person.update({
+        where: { id: person.id },
+        data: { profileTokenOpenedAt: new Date() },
+      });
     }
 
     const availableDepartments = await this.departmentsService.listForChurch(
@@ -215,6 +272,7 @@ export class ProfileService {
         id: person.id,
         firstName: person.firstName,
         lastName: person.lastName,
+        namesConfirmed: person.namesConfirmed,
         email: person.email,
         phone: person.phone,
         gender: person.gender,
@@ -237,45 +295,56 @@ export class ProfileService {
   }
 
   async updateByToken(token: string, dto: UpdateProfileDto) {
-    if (!token || token.trim() === '') {
-      throw new BadRequestException('Token is required');
-    }
-
-    const person = await this.prisma.person.findUnique({
-      where: { profileToken: token },
-      include: {
-        church: true,
-        departmentMemberships: true,
-      },
-    });
-
-    if (!person) {
-      throw new BadRequestException('Invalid or expired magic link');
-    }
+    const person = await this.resolveToken(token, { forUpdate: true });
 
     if (
-      !person.profileTokenExpiresAt ||
-      person.profileTokenExpiresAt < new Date()
+      !person.namesConfirmed &&
+      (!dto.firstName?.trim() || !dto.lastName?.trim())
     ) {
-      throw new BadRequestException(
-        'Magic link has expired. Please request a new one.',
-      );
+      throw new BadRequestException({
+        message: 'First name and last name are required',
+        code: 'NAMES_REQUIRED',
+      });
     }
 
+    const effectiveStatus = dto.membershipStatus ?? person.membershipStatus;
+    // Visitors and members have no departments: treat the request as a clear.
+    const departmentIds =
+      effectiveStatus === MembershipStatus.VISITOR ||
+      effectiveStatus === MembershipStatus.MEMBER
+        ? []
+        : dto.departmentIds;
+
     // Validate department IDs if provided
-    if (dto.departmentIds && dto.departmentIds.length > 0) {
+    if (departmentIds && departmentIds.length > 0) {
       const validDepts = await this.prisma.department.findMany({
         where: {
-          id: { in: dto.departmentIds },
+          id: { in: departmentIds },
           churchId: person.churchId,
         },
         select: { id: true },
       });
 
-      if (validDepts.length !== dto.departmentIds.length) {
+      if (validDepts.length !== departmentIds.length) {
         throw new BadRequestException(
           'One or more selected departments do not exist in this church',
         );
+      }
+    }
+
+    if (effectiveStatus === MembershipStatus.WORKER) {
+      const resultingCount =
+        departmentIds?.length ?? person.departmentMemberships.length;
+      if (resultingCount === 0) {
+        const churchDepartments = await this.prisma.department.count({
+          where: { churchId: person.churchId },
+        });
+        if (churchDepartments > 0) {
+          throw new BadRequestException({
+            message: 'Workers must select at least one department',
+            code: 'DEPARTMENT_REQUIRED',
+          });
+        }
       }
     }
 
@@ -288,13 +357,14 @@ export class ProfileService {
       dateOfBirth,
       address,
       membershipStatus,
-      departmentIds,
     } = dto;
 
     const personUpdateData: Prisma.PersonUpdateInput = {
       // Invalidate the token upon successful save (single-use)
       profileToken: null,
       profileTokenExpiresAt: null,
+      profileTokenOpenedAt: null,
+      namesConfirmed: true,
     };
 
     if (firstName !== undefined) personUpdateData.firstName = firstName.trim();
@@ -363,6 +433,7 @@ export class ProfileService {
           id: updatedPerson.id,
           firstName: updatedPerson.firstName,
           lastName: updatedPerson.lastName,
+          namesConfirmed: updatedPerson.namesConfirmed,
           email: updatedPerson.email,
           phone: updatedPerson.phone,
           gender: updatedPerson.gender,
