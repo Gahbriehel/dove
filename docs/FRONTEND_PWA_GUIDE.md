@@ -1,6 +1,6 @@
 # PWA Frontend Integration Guide — Church Member Relationship Platform (Phase 2)
 
-This guide provides everything needed to build the **Progressive Web App (PWA)** frontend (`dove-app`). It covers the passwordless magic link claim flow, profile setup, department self-selection, and the post-save PWA installation prompt.
+This guide provides everything needed to build the **Progressive Web App (PWA)** frontend (`dove-app`). It covers the passwordless secure-link claim flow, profile setup, department self-selection, and the post-save PWA installation prompt.
 
 ---
 
@@ -11,12 +11,12 @@ sequenceDiagram
     actor Member as Church Member
     participant PWA as Dove PWA (dove-app)
     participant API as Dove API (/profile)
-    participant Email as Email / SMS Service
+    participant Email as Email Service
 
     Member->>PWA: Scans QR Code → visits /profile
-    Member->>PWA: Enters email or phone
+    Member->>PWA: Enters email address
     PWA->>API: POST /profile/claim
-    API->>Email: Dispatches 30-min Magic Link
+    API->>Email: Emails a 30-min secure link
     API-->>PWA: 200 OK (Generic anti-enumeration message)
     PWA-->>Member: "Check your email for your link"
 
@@ -33,13 +33,14 @@ sequenceDiagram
 
 ### Key Security Features
 - **Public Endpoints**: All `/profile` routes are unauthenticated (`@Public()`). No Bearer JWT headers are required for member onboarding.
-- **Single-Use Tokens**: The magic link token is strictly single-use and expires after 30 minutes. Once `PATCH /profile/:token` succeeds, the token is destroyed.
+- **Single-Use Tokens**: The link token is single-use and expires after 30 minutes. Once `PATCH /profile/:token` succeeds, the token is destroyed. A link opened before it expires can still be saved for up to 30 minutes after it was first opened, so a half-filled form isn't lost.
+- **Rate limits**: `POST /profile/claim` allows 1 request per email per 60 s and 5 per hour; extra requests get the same generic `200` and no email is sent. There is also a per-IP cap (60 per 10 min) that returns `429`.
 - **Anti-Enumeration**: `POST /profile/claim` always returns HTTP 200 with the same confirmation message regardless of whether the email or phone was previously registered.
 - **Role Isolation**: Selecting `LEADER` or `PASTOR` updates directory categorization only; it does **not** grant system administrative access.
 
 ---
 
-## 2. Screen 1: Magic Link Claim (`/profile`)
+## 2. Screen 1: Secure Link Claim (`/profile`)
 
 The public entry point when someone scans the church QR code or clicks the shared link.
 
@@ -53,7 +54,7 @@ The public entry point when someone scans the church QR code or clicks the share
   "churchSlug": "abwog" // Optional: defaults to primary church if omitted
 }
 ```
-*Note: At least one of `email` or `phone` is required.*
+*Note: Request a link with an **email address**. Phone is accepted but only matches someone who already has an email on file; an unknown phone creates nothing. Unknown emails create a new visitor record (`namesConfirmed: false`).*
 
 #### Response (`200 OK`)
 ```json
@@ -64,9 +65,10 @@ The public entry point when someone scans the church QR code or clicks the share
 ```
 
 #### Frontend Implementation Notes
-1. **Form Fields**: Simple form with Email and/or Phone number input.
+1. **Form Fields**: Email input (email only; do not offer phone as a way to request a link).
 2. **Success State**: Always transition to a *"Check your inbox"* screen with instructions to click the secure link sent to their email.
-3. **Resend Timer**: Provide a 60-second cooldown timer before allowing the user to click "Resend link" to prevent spamming.
+3. **Resend Timer**: Provide a 60-second cooldown timer before allowing the user to click "Resend link". The server enforces the same limit silently, so the countdown is the only feedback.
+4. **429**: Only returned when one IP sends too many requests; show a generic "Too many attempts, try again shortly" message.
 
 ---
 
@@ -89,6 +91,7 @@ Call `GET /profile/:token` once. The backend provides everything needed for the 
     "id": "6a96bc8e-d98c-4573-9a3b-28f0fb26e031",
     "firstName": "Sarah",
     "lastName": "Johnson",
+    "namesConfirmed": true,
     "email": "sarah.johnson@example.com",
     "phone": "+2348012345678",
     "gender": "FEMALE",
@@ -107,8 +110,10 @@ Call `GET /profile/:token` once. The backend provides everything needed for the 
   },
   "church": {
     "id": "church-uuid",
-    "name": "Amazing Grace Bible Church",
+    "name": "Abiding Word Of Grace Missions",
+    "shortName": "Amazing Grace",
     "slug": "abwog",
+    "whatsappNumber": "+2348012345678",
     "email": "contact@abwog.org",
     "phone": "+2348000000000"
   },
@@ -137,12 +142,18 @@ Call `GET /profile/:token` once. The backend provides everything needed for the 
 }
 ```
 
+#### `namesConfirmed`
+When `false`, the record was created from an email alone and its names are placeholders ("New Visitor"). Leave the name fields **empty** and greet with "Welcome!". `PATCH` then requires both names. When `true`, pre-fill and greet by first name.
+
 #### Token Error Handling
-If the token is invalid or expired, the backend returns `400 Bad Request`:
-- **Expired**: `message: "Magic link has expired. Please request a new one."`
-  → Render an expired link view with a *"Request a new link"* button redirecting back to `/profile`.
-- **Invalid**: `message: "Invalid or expired magic link"`
-  → Render an invalid link view.
+`GET` and `PATCH /profile/:token` return `400 Bad Request` with a machine-readable `code` (switch on `code`, not `message`):
+
+| `code` | `message` | Screen |
+|---|---|---|
+| `PROFILE_LINK_EXPIRED` | `Magic link has expired. Please request a new one.` | Expired view with a *"Request a new link"* button back to `/profile` |
+| `PROFILE_LINK_INVALID` | `Invalid or expired magic link` | Invalid view (also shown for an already-used link) |
+
+Body shape: `{ "success": false, "statusCode": 400, "message": "...", "code": "PROFILE_LINK_EXPIRED" }`.
 
 ---
 
@@ -169,7 +180,9 @@ The department selector should dynamically respond to the selected `membershipSt
 |---|---|
 | **`WORKER`** | **Required/Highlighted**: Show multi-select tags/checkboxes populated from `availableDepartments`. Prompt: *"Which department(s) do you serve in?"* |
 | **`LEADER` / `PASTOR`** | **Optional**: Show department multi-select with helper note: *"Select any operational departments you preside over or serve in (optional)."* |
-| **`VISITOR` / `MEMBER`** | **Hidden or Collapsed**: Typically 0 departments. |
+| **`VISITOR` / `MEMBER`** | **Hidden or Collapsed**: Typically 0 departments. The server clears any departments sent for these statuses. |
+
+The server enforces the Worker rule: a `WORKER` with no departments gets `400` with `code: "DEPARTMENT_REQUIRED"`. This is only enforced when the church has at least one department.
 
 ---
 
@@ -196,6 +209,8 @@ When the user clicks **"Save & Continue"**, send the form data:
   ]
 }
 ```
+
+Other `400` codes on this endpoint: `NAMES_REQUIRED` (names are unconfirmed and `firstName` or `lastName` is missing), plus the two link codes above. Saving sets `namesConfirmed: true`.
 
 #### Response (`200 OK`)
 ```json
@@ -334,6 +349,7 @@ export interface PersonProfile {
   id: string;
   firstName: string;
   lastName: string;
+  namesConfirmed: boolean;
   email: string | null;
   phone: string | null;
   gender: Gender | null;
@@ -346,6 +362,8 @@ export interface PersonProfile {
 export interface ChurchInfo {
   id: string;
   name: string;
+  shortName?: string | null;
+  whatsappNumber?: string | null; // E.164, e.g. "+2348012345678"
   slug: string;
   email?: string | null;
   phone?: string | null;
@@ -370,4 +388,12 @@ export interface UpdateProfilePayload {
   membershipStatus?: MembershipStatus;
   departmentIds?: string[];
 }
+```
+
+```typescript
+export type ProfileErrorCode =
+  | 'PROFILE_LINK_EXPIRED'
+  | 'PROFILE_LINK_INVALID'
+  | 'NAMES_REQUIRED'
+  | 'DEPARTMENT_REQUIRED';
 ```

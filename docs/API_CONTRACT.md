@@ -203,6 +203,35 @@ Admin and Super Admin only. Deletes a contact submission.
 
 ---
 
+# Self-Service Profile Link
+
+Public endpoints (no auth).
+
+POST /profile/claim
+
+Body: `{ email?, phone?, churchSlug? }`. Links are emailed only. A phone number only matches an existing person who has an email on file; an unknown phone creates nothing. An unknown email creates a `VISITOR` named "New Visitor" with `namesConfirmed: false`. Always returns `200` with the same generic message. Per-email limit (1 per 60 s, 5 per hour) returns that same `200` and sends nothing. Per-IP limit (60 per 10 min) returns `429`.
+
+GET /profile/:token
+
+Returns `person` (now including `namesConfirmed`), `church` (now including `shortName` and `whatsappNumber`) and `availableDepartments`. First open sets `profileTokenOpenedAt`.
+
+PATCH /profile/:token
+
+Saves the profile and consumes the token. Accepted if the token has not expired, or if it was opened before expiry and the save is within 30 minutes of opening. Sets `namesConfirmed: true`. `VISITOR`/`MEMBER` have departments cleared.
+
+Errors (`400`, body includes `code`):
+
+| `code` | When |
+|---|---|
+| `PROFILE_LINK_INVALID` | Unknown or already-used token |
+| `PROFILE_LINK_EXPIRED` | Token expired (and, for `PATCH`, outside the grace window) |
+| `NAMES_REQUIRED` | `PATCH` while `namesConfirmed` is false and `firstName`/`lastName` is missing |
+| `DEPARTMENT_REQUIRED` | `WORKER` with no departments, when the church has at least one department |
+
+The link base URL comes from the `PROFILE_URL` env var (falls back to `APP_URL/profile`). Profile tokens are redacted from server logs (`/profile/:token`).
+
+---
+
 # Phone Numbers
 
 Every phone number written through the API is stored in E.164 (`+2348034567890`). Nigerian numbers may be typed as `0803…`, `803…`, `+234 803…` or `234803…`. An invalid number returns `400` with `Please enter a valid phone number`. Public endpoints (registration, profile claim) do not block on a bad number: it is dropped and a warning is logged.

@@ -33,10 +33,11 @@ a link on screen during services. Anyone can visit it — no login required.
 
 ```
 1. Person scans QR code / opens the shared link
-2. Enters their email address or phone number
+2. Enters their email address
 3. System looks up their existing Person record:
      → Found:  generates a secure link and sends it to their email
-     → Not found: creates a new VISITOR Person record, then sends a magic link
+     → Not found: creates a new VISITOR Person record (names unconfirmed), then sends the link
+     → A phone number alone only matches an existing person; it never creates one
 4. Person clicks the link → lands on their own profile form (pre-filled)
 5. They review and update: name, phone, gender, date of birth, address
 6. Profile is saved to the Person record in Dove
@@ -60,19 +61,21 @@ a link on screen during services. Anyone can visit it — no login required.
 
 ---
 
-## Magic Link Authentication
+## Secure Link Authentication
 
 Member auth is tokenised and passwordless. Admin auth (JWT username+password)
 remains completely separate and unchanged.
 
 ### Token Design
 
-Two fields are added to the `Person` table:
+Four fields are added to the `Person` table:
 
 | Field | Type | Notes |
 |---|---|---|
 | `profileToken` | String? unique | Stored token, consistent with `Registration.token` |
 | `profileTokenExpiresAt` | DateTime? | 30-minute expiry; token is invalid after this |
+| `profileTokenOpenedAt` | DateTime? | Set when the link is first opened; allows saving up to 30 min after opening |
+| `namesConfirmed` | Boolean (default true) | False for records created from an email alone, until the person saves their names |
 
 The token is invalidated after use (single-use) or expiry, whichever comes first.
 
@@ -80,12 +83,15 @@ The token is invalidated after use (single-use) or expiry, whichever comes first
 
 | Method | Route | Purpose |
 |---|---|---|
-| `POST` | `/profile/claim` | Submit email/phone → find-or-create Person → send magic link |
+| `POST` | `/profile/claim` | Submit email → find-or-create Person → email the secure link |
 | `GET` | `/profile/:token` | Validate token → return Person profile data |
 | `PATCH` | `/profile/:token` | Validate token → save profile updates |
 
 `POST /profile/claim` always returns `200` with a generic message regardless of
-whether the email/phone matched an existing record (prevents enumeration).
+whether the email/phone matched an existing record (prevents enumeration). It is
+rate limited per email (1 per 60 s, 5 per hour; excess requests get the same
+generic `200`) and per IP (60 per 10 min, `429`). Link errors carry `code`
+`PROFILE_LINK_INVALID` or `PROFILE_LINK_EXPIRED`. See ADR-006.
 
 ---
 

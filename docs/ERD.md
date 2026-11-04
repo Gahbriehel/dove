@@ -122,6 +122,8 @@ The following fields are added to `Person` in Phase 2. No existing fields are ch
 |---|---|---|
 | `profileToken` | String? | Short-lived token for magic link auth |
 | `profileTokenExpiresAt` | DateTime? | Token expiry — token is invalid after this time |
+| `profileTokenOpenedAt` | DateTime? | When the link was first opened; allows saving within 30 min of opening even after expiry. Reset when a new token is issued |
+| `namesConfirmed` | Boolean | Default `true`. `false` for records created from an email alone (names are placeholders) until the person saves their names |
 | `followUpNotes` | String? | Free text notes from the pastoral/follow-up team |
 | `lastFollowUpAt` | DateTime? | When the person was last contacted |
 | `followUpStatus` | Enum? | `PENDING \| IN_PROGRESS \| CONVERTED \| INACTIVE` (defaults to PENDING for visitors, null for non-visitors) |
