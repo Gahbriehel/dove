@@ -14,6 +14,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Public } from '../common/decorators/public.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { ClaimProfileDto } from './dto/claim-profile.dto';
+import { MemberLoginDto } from './dto/member-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ProfileService } from './profile.service';
 
@@ -87,5 +88,32 @@ export class ProfileController {
     @Body() updateProfileDto: UpdateProfileDto,
   ) {
     return this.profileService.updateByToken(token, updateProfileDto);
+  }
+
+  @Post('login')
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Member login successful')
+  @ApiOperation({
+    summary: 'Log in to member PWA using phone/email and 4-digit PIN',
+    description:
+      'Authenticates church member/worker using their phone number or email and 4-digit PIN. Returns a member session token.',
+  })
+  @ApiResponse({ status: 200, description: 'Login successful' })
+  @ApiResponse({
+    status: 400,
+    description: 'No PIN set (code: NO_PIN_SET) or invalid input',
+  })
+  @ApiResponse({
+    status: 401,
+    description:
+      'Invalid credentials or incorrect PIN (code: INVALID_CREDENTIALS or INVALID_PIN)',
+  })
+  @ApiResponse({
+    status: 403,
+    description:
+      'Account locked due to too many failed attempts (code: PIN_LOCKED)',
+  })
+  async login(@Body() memberLoginDto: MemberLoginDto) {
+    return this.profileService.login(memberLoginDto);
   }
 }

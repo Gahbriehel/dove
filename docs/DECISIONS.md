@@ -127,3 +127,31 @@ Future
 WhatsApp Cloud API automation (e.g. automated reminders) and PWA push notifications can be added behind the same template and outreach log model.
 
 See `docs/PHASE2_MESSAGING_AND_PROFILE_IMPLEMENTATION.md`.
+
+---
+
+## ADR-007
+
+Title
+
+Member PIN Authentication & Decoupled Trust Boundaries
+
+Status
+
+Accepted
+
+Decision
+
+1. Member credentials (`Person.pinHash`) and Staff/Admin credentials (`User.passwordHash`) remain strictly separate:
+   - Staff/Admin authenticate into Olive via `POST /api/v1/auth/login` using email and strong password.
+   - Members authenticate into the PWA via `POST /api/v1/profile/login` using phone/email and a 4-digit PIN.
+   - Even if a church member is also a staff administrator, their 4-digit PIN never grants administrative access to Olive or sensitive church data.
+2. During member onboarding via magic link, PIN setup is an explicit step between profile completion and the celebration screen:
+   - Collected in `ProfileFlow` before final save.
+   - Submitted in a single atomic request via `PATCH /profile/:token` with `pin?: string`.
+3. 4-Digit PIN Security & Lockout:
+   - 5 consecutive failed PIN attempts lock the account for 15 minutes (`pinLockedUntil`, code: `PIN_LOCKED`).
+   - Forgot PIN triggers existing magic link flow (`POST /profile/claim`), allowing members to reset their PIN upon opening the link.
+4. Membership IDs:
+   - Retained and reserved strictly for `MEMBER`, `WORKER`, `LEADER`, and `PASTOR` (excluding `VISITOR`).
+

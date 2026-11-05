@@ -1,12 +1,16 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { MembershipStatus, Prisma } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { DepartmentsService } from '../departments/departments.service';
 import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
@@ -18,6 +22,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ClaimRateLimiter } from './claim-rate-limiter';
 import { ClaimProfileDto } from './dto/claim-profile.dto';
+import { MemberLoginDto } from './dto/member-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 const PROFILE_LINK_TTL_MS = 30 * 60 * 1000;
@@ -68,6 +73,7 @@ export class ProfileService {
     private readonly configService: ConfigService,
     private readonly departmentsService: DepartmentsService,
     private readonly claimRateLimiter: ClaimRateLimiter,
+    private readonly jwtService: JwtService,
     @Inject(EMAIL_SERVICE)
     private readonly emailProvider: IEmailService,
   ) {}
@@ -273,6 +279,7 @@ export class ProfileService {
         firstName: person.firstName,
         lastName: person.lastName,
         namesConfirmed: person.namesConfirmed,
+        hasPin: Boolean(person.pinHash),
         email: person.email,
         phone: person.phone,
         gender: person.gender,
@@ -381,6 +388,11 @@ export class ProfileService {
     if (dateOfBirth !== undefined) {
       personUpdateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
     }
+    if (dto.pin) {
+      personUpdateData.pinHash = await bcrypt.hash(dto.pin, 10);
+      personUpdateData.pinFailedAttempts = 0;
+      personUpdateData.pinLockedUntil = null;
+    }
 
     // Transaction to update Person and Department Memberships atomically
     return this.prisma.$transaction(async (tx) => {
@@ -434,6 +446,7 @@ export class ProfileService {
           firstName: updatedPerson.firstName,
           lastName: updatedPerson.lastName,
           namesConfirmed: updatedPerson.namesConfirmed,
+          hasPin: Boolean(updatedPerson.pinHash),
           email: updatedPerson.email,
           phone: updatedPerson.phone,
           gender: updatedPerson.gender,
@@ -452,5 +465,164 @@ export class ProfileService {
         },
       };
     });
+  }
+
+  async login(dto: MemberLoginDto) {
+    const rawIdentifier = dto.identifier.trim();
+    const isEmail = rawIdentifier.includes('@');
+    const email = isEmail ? rawIdentifier.toLowerCase() : null;
+    const phone = !isEmail ? normalizePhone(rawIdentifier) : null;
+
+    // 1. Resolve church
+    let churchId: string;
+    if (dto.churchSlug) {
+      const church = await this.prisma.church.findUnique({
+        where: { slug: dto.churchSlug.trim() },
+      });
+      if (!church) {
+        throw new NotFoundException(
+          `Church with slug "${dto.churchSlug}" not found`,
+        );
+      }
+      churchId = church.id;
+    } else {
+      churchId = await this.prisma.getDefaultChurchId();
+    }
+
+    // 2. Find Person
+    let person: TokenPerson | null = null;
+    if (email) {
+      person = await this.prisma.person.findFirst({
+        where: { email, churchId },
+        include: TOKEN_PERSON_INCLUDE,
+      });
+    } else if (phone) {
+      person = await this.prisma.person.findFirst({
+        where: { phone, churchId },
+        include: TOKEN_PERSON_INCLUDE,
+      });
+    }
+
+    if (!person) {
+      throw new UnauthorizedException({
+        message: 'Invalid email/phone or PIN',
+        code: 'INVALID_CREDENTIALS',
+      });
+    }
+
+    // 3. Check lockout
+    const now = new Date();
+    if (person.pinLockedUntil && person.pinLockedUntil > now) {
+      const remainingMinutes = Math.ceil(
+        (person.pinLockedUntil.getTime() - now.getTime()) / 60000,
+      );
+      throw new ForbiddenException({
+        message: `Account is temporarily locked. Try again in ${remainingMinutes} minute(s) or use a magic link.`,
+        code: 'PIN_LOCKED',
+        lockedUntil: person.pinLockedUntil.toISOString(),
+      });
+    }
+
+    // 4. Check if person has a PIN set
+    if (!person.pinHash) {
+      throw new BadRequestException({
+        message:
+          'No PIN has been set for this profile. Please log in using a magic link.',
+        code: 'NO_PIN_SET',
+      });
+    }
+
+    // 5. Verify PIN
+    const isMatch = await bcrypt.compare(dto.pin, person.pinHash);
+    if (!isMatch) {
+      const attempts = person.pinFailedAttempts + 1;
+      const maxAttempts = 5;
+      const isNowLocked = attempts >= maxAttempts;
+      const lockDurationMs = 15 * 60 * 1000;
+
+      await this.prisma.person.update({
+        where: { id: person.id },
+        data: {
+          pinFailedAttempts: isNowLocked ? 0 : attempts,
+          pinLockedUntil: isNowLocked
+            ? new Date(Date.now() + lockDurationMs)
+            : null,
+        },
+      });
+
+      if (isNowLocked) {
+        throw new ForbiddenException({
+          message:
+            'Too many incorrect PIN attempts. Your account has been temporarily locked for 15 minutes. You can also sign in via magic link.',
+          code: 'PIN_LOCKED',
+        });
+      }
+
+      throw new UnauthorizedException({
+        message: `Incorrect PIN. ${maxAttempts - attempts} attempt(s) remaining.`,
+        code: 'INVALID_PIN',
+        attemptsRemaining: maxAttempts - attempts,
+      });
+    }
+
+    // 6. Reset failed attempts
+    if (person.pinFailedAttempts > 0 || person.pinLockedUntil) {
+      await this.prisma.person.update({
+        where: { id: person.id },
+        data: {
+          pinFailedAttempts: 0,
+          pinLockedUntil: null,
+        },
+      });
+    }
+
+    // 7. Generate member JWT
+    const jwtSecret = this.configService.get<string>('jwt.secret');
+    const jwtExpiresIn =
+      this.configService.get<string>('jwt.expiresIn') || '30d';
+
+    const accessToken = await this.jwtService.signAsync(
+      {
+        sub: person.id,
+        churchId: person.churchId,
+        email: person.email,
+        phone: person.phone,
+        membershipStatus: person.membershipStatus,
+        aud: 'dove:member',
+        type: 'MEMBER',
+      },
+      {
+        secret: jwtSecret,
+        expiresIn: jwtExpiresIn as unknown as number,
+      },
+    );
+
+    return {
+      message: 'Login successful',
+      accessToken,
+      person: {
+        id: person.id,
+        firstName: person.firstName,
+        lastName: person.lastName,
+        namesConfirmed: person.namesConfirmed,
+        hasPin: true,
+        email: person.email,
+        phone: person.phone,
+        gender: person.gender,
+        dateOfBirth: person.dateOfBirth
+          ? person.dateOfBirth.toISOString().split('T')[0]
+          : null,
+        address: person.address,
+        membershipStatus: person.membershipStatus,
+        departments: person.departmentMemberships.map((m) => ({
+          id: m.department.id,
+          name: m.department.name,
+          description: m.department.description,
+          role: m.role,
+          joinedAt: m.joinedAt,
+        })),
+      },
+      church: person.church,
+    };
   }
 }

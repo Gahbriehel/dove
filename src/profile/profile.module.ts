@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { DepartmentsModule } from '../departments/departments.module';
 import { EmailModule } from '../email/email.module';
@@ -14,6 +15,7 @@ import { ProfileService } from './profile.service';
     ConfigModule,
     DepartmentsModule,
     EmailModule,
+    JwtModule.register({}),
     // Per-IP cap for POST /profile/claim: 60 per 10 min (a shared foyer Wi-Fi
     // IP serves the whole congregation, so this is deliberately generous).
     ThrottlerModule.forRoot([{ ttl: 10 * 60 * 1000, limit: 60 }]),

@@ -10,6 +10,7 @@ describe('ProfileController', () => {
     claim: jest.Mock;
     getByToken: jest.Mock;
     updateByToken: jest.Mock;
+    login: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -17,6 +18,7 @@ describe('ProfileController', () => {
       claim: jest.fn(),
       getByToken: jest.fn(),
       updateByToken: jest.fn(),
+      login: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -67,5 +69,20 @@ describe('ProfileController', () => {
     const result = await controller.updateByToken('token-123', dto);
     expect(serviceMock.updateByToken).toHaveBeenCalledWith('token-123', dto);
     expect(result.person.membershipStatus).toBe(MembershipStatus.MEMBER);
+  });
+
+  it('should call login', async () => {
+    serviceMock.login.mockResolvedValue({
+      message: 'Login successful',
+      accessToken: 'jwt-token',
+      person: { id: 'p-1', firstName: 'Jane' },
+    });
+    const dto = {
+      identifier: 'jane@example.com',
+      pin: '1234',
+    };
+    const result = await controller.login(dto);
+    expect(serviceMock.login).toHaveBeenCalledWith(dto);
+    expect(result.accessToken).toBe('jwt-token');
   });
 });

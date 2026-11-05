@@ -1,5 +1,10 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { MembershipStatus } from '@prisma/client';
 import { DepartmentsService } from '../departments/departments.service';
@@ -41,6 +46,9 @@ describe('ProfileService', () => {
   };
   let emailProviderMock: {
     sendCustomBroadcast: jest.Mock;
+  };
+  let jwtServiceMock: {
+    signAsync: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -118,6 +126,9 @@ describe('ProfileService', () => {
     emailProviderMock = {
       sendCustomBroadcast: jest.fn().mockResolvedValue(undefined),
     };
+    jwtServiceMock = {
+      signAsync: jest.fn().mockResolvedValue('mock-member-jwt-token'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -134,6 +145,10 @@ describe('ProfileService', () => {
         {
           provide: DepartmentsService,
           useValue: departmentsServiceMock,
+        },
+        {
+          provide: JwtService,
+          useValue: jwtServiceMock,
         },
         {
           provide: EMAIL_SERVICE,
@@ -597,6 +612,160 @@ describe('ProfileService', () => {
         where: { personId: 'person-1', departmentId: { notIn: [] } },
       });
       expect(tx.departmentMembership.create).not.toHaveBeenCalled();
+    });
+
+    it('hashes PIN and stores it when pin is provided in updateByToken', async () => {
+      prismaMock.person.findUnique.mockResolvedValue(person());
+      const tx = {
+        person: {
+          update: jest
+            .fn()
+            .mockResolvedValue({ id: 'person-1', pinHash: 'hashed-pin' }),
+        },
+        departmentMembership: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          create: jest.fn(),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+      };
+      prismaMock.$transaction.mockImplementationOnce(
+        (cb: (t: unknown) => Promise<unknown>) => cb(tx),
+      );
+
+      const result = await service.updateByToken('x', {
+        pin: '1234',
+      });
+
+      expect(tx.person.update).toHaveBeenCalled();
+      const updateData = callArg(tx.person.update).data;
+      expect(updateData.pinHash).toBeDefined();
+      expect(updateData.pinHash).not.toBe('1234'); // Must be hashed
+      expect(updateData.pinFailedAttempts).toBe(0);
+      expect(updateData.pinLockedUntil).toBeNull();
+      expect(result.person.hasPin).toBe(true);
+    });
+  });
+
+  describe('login (member PIN authentication)', () => {
+    const validPerson = (overrides = {}) => ({
+      id: 'p-1',
+      churchId: 'church-1',
+      firstName: 'Sarah',
+      lastName: 'Adeyemi',
+      email: 'sarah@example.com',
+      phone: '+2348012345678',
+      membershipStatus: MembershipStatus.WORKER,
+      namesConfirmed: true,
+      // bcrypt hash for "1234"
+      pinHash: '$2b$10$a2ElV7W5iQIHqLvwKiPpcO/KcRufocp3bOXORd4oDwf..hIO4Tghi',
+      pinFailedAttempts: 0,
+      pinLockedUntil: null,
+      church: {
+        id: 'church-1',
+        name: 'Amazing Grace',
+        slug: 'abwog',
+      },
+      departmentMemberships: [],
+      ...overrides,
+    });
+
+    it('successfully logs in with email and correct PIN', async () => {
+      // Mock bcrypt.compare to return true for "1234"
+      prismaMock.person.findFirst.mockResolvedValue(validPerson());
+
+      const result = await service.login({
+        identifier: 'sarah@example.com',
+        pin: '1234',
+      });
+
+      expect(result.message).toBe('Login successful');
+      expect(result.accessToken).toBe('mock-member-jwt-token');
+      expect(result.person.id).toBe('p-1');
+      expect(result.person.hasPin).toBe(true);
+    });
+
+    it('successfully logs in with phone number and correct PIN', async () => {
+      prismaMock.person.findFirst.mockResolvedValue(validPerson());
+
+      const result = await service.login({
+        identifier: '08012345678',
+        pin: '1234',
+      });
+
+      expect(result.accessToken).toBe('mock-member-jwt-token');
+      expect(prismaMock.person.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { phone: '+2348012345678', churchId: 'church-1' },
+        }),
+      );
+    });
+
+    it('throws UnauthorizedException if person is not found', async () => {
+      prismaMock.person.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.login({ identifier: 'unknown@example.com', pin: '1234' }),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws BadRequestException with NO_PIN_SET if person has no PIN configured', async () => {
+      prismaMock.person.findFirst.mockResolvedValue(
+        validPerson({ pinHash: null }),
+      );
+
+      await expect(
+        service.login({ identifier: 'sarah@example.com', pin: '1234' }),
+      ).rejects.toMatchObject({
+        response: { code: 'NO_PIN_SET' },
+      });
+    });
+
+    it('increments failed attempts on incorrect PIN', async () => {
+      prismaMock.person.findFirst.mockResolvedValue(
+        validPerson({ pinFailedAttempts: 1 }),
+      );
+      prismaMock.person.update.mockResolvedValue({});
+
+      await expect(
+        service.login({ identifier: 'sarah@example.com', pin: '9999' }),
+      ).rejects.toMatchObject({
+        response: { code: 'INVALID_PIN', attemptsRemaining: 3 },
+      });
+
+      expect(prismaMock.person.update).toHaveBeenCalledWith({
+        where: { id: 'p-1' },
+        data: { pinFailedAttempts: 2, pinLockedUntil: null },
+      });
+    });
+
+    it('locks account for 15 minutes when reaching 5 failed attempts', async () => {
+      prismaMock.person.findFirst.mockResolvedValue(
+        validPerson({ pinFailedAttempts: 4 }),
+      );
+      prismaMock.person.update.mockResolvedValue({});
+
+      await expect(
+        service.login({ identifier: 'sarah@example.com', pin: '9999' }),
+      ).rejects.toMatchObject({
+        response: { code: 'PIN_LOCKED' },
+      });
+
+      const updateData = callArg(prismaMock.person.update).data;
+      expect(updateData.pinFailedAttempts).toBe(0);
+      expect(updateData.pinLockedUntil).toBeInstanceOf(Date);
+    });
+
+    it('rejects login immediately if account is currently locked', async () => {
+      const lockedUntil = new Date(Date.now() + 10 * 60 * 1000);
+      prismaMock.person.findFirst.mockResolvedValue(
+        validPerson({ pinLockedUntil: lockedUntil }),
+      );
+
+      await expect(
+        service.login({ identifier: 'sarah@example.com', pin: '1234' }),
+      ).rejects.toMatchObject({
+        response: { code: 'PIN_LOCKED' },
+      });
     });
   });
 });

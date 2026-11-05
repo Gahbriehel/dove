@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   MaxLength,
 } from 'class-validator';
 
@@ -91,4 +92,14 @@ export class UpdateProfileDto {
   @IsUUID('all', { each: true })
   @IsOptional()
   departmentIds?: string[];
+
+  @ApiPropertyOptional({
+    description:
+      'Optional 4-digit numeric login PIN for self-service member PWA authentication',
+    example: '1234',
+  })
+  @IsString()
+  @IsOptional()
+  @Matches(/^\d{4}$/, { message: 'PIN must be exactly 4 digits' })
+  pin?: string;
 }

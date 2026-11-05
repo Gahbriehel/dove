@@ -144,6 +144,7 @@ model User {
   createdCheckIns       PastoralCheckIn[]  @relation("CheckInCreatedBy")
   assignedCheckIns      PastoralCheckIn[]  @relation("CheckInAssignedTo")
   outreachMessages      OutreachMessage[]  @relation("OutreachSentBy")
+  person                Person?            @relation("UserPerson")
 
   @@index([churchId])
   @@map("users")
@@ -213,6 +214,10 @@ model Person {
   profileTokenExpiresAt DateTime?           @map("profile_token_expires_at")
   profileTokenOpenedAt  DateTime?           @map("profile_token_opened_at")
   namesConfirmed        Boolean             @default(true) @map("names_confirmed")
+  pinHash               String?             @map("pin_hash") @db.VarChar(255)
+  pinFailedAttempts     Int                 @default(0) @map("pin_failed_attempts")
+  pinLockedUntil        DateTime?           @map("pin_locked_until")
+  userId                String?             @unique @map("user_id")
   followUpStatus        FollowUpStatus?     @map("follow_up_status")
   followUpNotes         String?             @map("follow_up_notes") @db.Text
   lastFollowUpAt        DateTime?           @map("last_follow_up_at")
@@ -220,6 +225,7 @@ model Person {
   updatedAt             DateTime            @updatedAt @map("updated_at")
 
   church                Church                 @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  user                  User?                  @relation("UserPerson", fields: [userId], references: [id], onDelete: SetNull)
   registrations         Registration[]
   birthdayGreetings     BirthdayGreeting[]
   departmentMemberships DepartmentMembership[]
