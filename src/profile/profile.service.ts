@@ -9,7 +9,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { MembershipStatus, Prisma } from '@prisma/client';
+import { Gender, MembershipStatus, Prisma } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
 import { DepartmentsService } from '../departments/departments.service';
@@ -24,6 +24,10 @@ import { ClaimRateLimiter } from './claim-rate-limiter';
 import { ClaimProfileDto } from './dto/claim-profile.dto';
 import { MemberLoginDto } from './dto/member-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
+import { ChangePinDto } from './dto/change-pin.dto';
+import { MemberSessionService } from './member-session.service';
+import { MemberJwtPayload } from './guards/member-auth.guard';
+import { getPhoneCandidates, validatePinStrength } from './utils/pin.util';
 
 const PROFILE_LINK_TTL_MS = 30 * 60 * 1000;
 /** After first opening a valid link, the form may be saved for this long. */
@@ -74,30 +78,122 @@ export class ProfileService {
     private readonly departmentsService: DepartmentsService,
     private readonly claimRateLimiter: ClaimRateLimiter,
     private readonly jwtService: JwtService,
+    private readonly memberSessionService: MemberSessionService,
     @Inject(EMAIL_SERVICE)
     private readonly emailProvider: IEmailService,
   ) {}
 
+  private formatPerson(
+    person: {
+      id: string;
+      firstName: string;
+      lastName: string;
+      namesConfirmed: boolean;
+      pinHash?: string | null;
+      email: string | null;
+      phone: string | null;
+      gender: Gender | null;
+      dateOfBirth: Date | null;
+      address: string | null;
+      membershipStatus: MembershipStatus;
+    },
+    departments: Array<{
+      department: { id: string; name: string; description: string | null };
+      role: string | null;
+      joinedAt: Date;
+    }>,
+  ) {
+    return {
+      id: person.id,
+      firstName: person.firstName,
+      lastName: person.lastName,
+      namesConfirmed: person.namesConfirmed,
+      hasPin: Boolean(person.pinHash),
+      email: person.email,
+      phone: person.phone,
+      gender: person.gender,
+      dateOfBirth: person.dateOfBirth
+        ? person.dateOfBirth.toISOString().split('T')[0]
+        : null,
+      address: person.address,
+      membershipStatus: person.membershipStatus,
+      departments: departments.map((m) => ({
+        id: m.department.id,
+        name: m.department.name,
+        description: m.department.description,
+        role: m.role,
+        joinedAt: m.joinedAt,
+      })),
+    };
+  }
+
+  async generateMemberToken(person: {
+    id: string;
+    churchId: string;
+    email?: string | null;
+    phone?: string | null;
+    membershipStatus?: string | null;
+  }): Promise<string> {
+    const jwtSecret = this.configService.get<string>('jwt.secret');
+    const jwtExpiresIn =
+      this.configService.get<string>('jwt.expiresIn') || '30d';
+
+    return this.jwtService.signAsync(
+      {
+        sub: person.id,
+        churchId: person.churchId,
+        email: person.email,
+        phone: person.phone,
+        membershipStatus: person.membershipStatus,
+        aud: 'dove:member',
+        type: 'MEMBER',
+        jti: crypto.randomUUID(),
+      },
+      {
+        secret: jwtSecret,
+        expiresIn: jwtExpiresIn as unknown as number,
+      },
+    );
+  }
+
   async claim(dto: ClaimProfileDto): Promise<{ message: string }> {
-    const rawEmail = dto.email?.trim().toLowerCase();
+    const submittedEmail = dto.email?.trim().toLowerCase();
     const submittedPhone = dto.phone?.trim();
-    // Public endpoint: an unusable number is ignored rather than rejected.
     const rawPhone = submittedPhone ? normalizePhone(submittedPhone) : null;
     if (submittedPhone && !rawPhone) {
       this.logger.warn('Ignoring invalid phone number on profile claim');
     }
 
-    if (!rawEmail && !rawPhone) {
+    if (!submittedEmail && !rawPhone) {
       throw new BadRequestException(
         'Please provide an email address or phone number to claim your profile',
       );
     }
 
-    // 1. Resolve church
+    // Resolve church: slug wins, fallback to the seeded single church.
     let churchId: string;
+    let church: {
+      id: string;
+      name: string;
+      shortName?: string | null;
+      slug: string;
+      email?: string | null;
+      phone?: string | null;
+      whatsappNumber?: string | null;
+    } | null = null;
+
     if (dto.churchSlug) {
-      const church = await this.prisma.church.findUnique({
+      church = await this.prisma.church.findUnique({
         where: { slug: dto.churchSlug.trim() },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          slug: true,
+          email: true,
+          phone: true,
+          whatsappNumber: true,
+        },
       });
       if (!church) {
         throw new NotFoundException(
@@ -107,18 +203,23 @@ export class ProfileService {
       churchId = church.id;
     } else {
       churchId = await this.prisma.getDefaultChurchId();
+      church = await this.prisma.church.findUnique({
+        where: { id: churchId },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          slug: true,
+          email: true,
+          phone: true,
+          whatsappNumber: true,
+        },
+      });
     }
 
-    const church = await this.prisma.church.findUnique({
-      where: { id: churchId },
-    });
-    if (!church) {
-      throw new NotFoundException(`Church not found`);
-    }
-
-    // 2. Lookup existing Person or create visitor
+    // Match person: email, or phone, scoped to church.
     const conditions: Prisma.PersonWhereInput[] = [];
-    if (rawEmail) conditions.push({ email: rawEmail });
+    if (submittedEmail) conditions.push({ email: submittedEmail });
     if (rawPhone) {
       conditions.push({ phone: rawPhone });
       if (submittedPhone && submittedPhone !== rawPhone) {
@@ -133,32 +234,38 @@ export class ProfileService {
       },
     });
 
-    // Links are only ever emailed, so without an address there is nothing to do.
-    const recipientEmail = person?.email || rawEmail;
-    if (!recipientEmail) {
-      return { message: CLAIM_RESPONSE_MESSAGE };
-    }
-
-    // Over the per-email limit: answer exactly like a success and send nothing.
-    if (!this.claimRateLimiter.tryConsume(recipientEmail.toLowerCase())) {
-      return { message: CLAIM_RESPONSE_MESSAGE };
-    }
-
-    if (!person) {
+    if (!person && submittedEmail) {
+      // Self-service visitor auto-creation.
       person = await this.prisma.person.create({
         data: {
           churchId,
           firstName: 'New',
           lastName: 'Visitor',
-          namesConfirmed: false,
-          email: rawEmail,
+          email: submittedEmail,
           phone: rawPhone || null,
           membershipStatus: MembershipStatus.VISITOR,
+          namesConfirmed: false,
         },
       });
     }
 
-    // 3. Generate secure single-use token
+    // Unknown phone without matching person: silent 200 (no account creation).
+    if (!person) {
+      return { message: CLAIM_RESPONSE_MESSAGE };
+    }
+
+    const recipientEmail = person.email?.trim().toLowerCase();
+    if (!recipientEmail) {
+      // Person exists by phone but has no email: cannot deliver magic link.
+      return { message: CLAIM_RESPONSE_MESSAGE };
+    }
+
+    // Per-email rate limit: 1 per 60 s, 5 per hour.
+    if (!this.claimRateLimiter.tryConsume(recipientEmail)) {
+      return { message: CLAIM_RESPONSE_MESSAGE };
+    }
+
+    // Issue a 32-byte hex (64 char) single-use magic link token.
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + PROFILE_LINK_TTL_MS);
 
@@ -171,7 +278,6 @@ export class ProfileService {
       },
     });
 
-    // 4. Send the secure link email
     const appUrl =
       this.configService.get<string>('appUrl')?.replace(/\/+$/, '') ||
       'http://localhost:3000';
@@ -179,7 +285,8 @@ export class ProfileService {
       this.configService.get<string>('profileUrl')?.replace(/\/+$/, '') ||
       `${appUrl}/profile`;
     const profileLinkUrl = `${profileBaseUrl}/${token}`;
-    const churchShortName = church.shortName?.trim() || church.name;
+    const churchShortName =
+      church?.shortName?.trim() || church?.name || 'Your Church';
     const greeting = person.namesConfirmed
       ? `Hello ${person.firstName},`
       : 'Hello,';
@@ -195,10 +302,10 @@ export class ProfileService {
         message: `${greeting} use the button below to update your details with ${churchShortName}. The link expires in 30 minutes and can be used once.`,
         ctaLabel: 'Update my details',
         ctaUrl: profileLinkUrl,
-        churchName: church.name,
-        contactEmail: church.email || undefined,
-        contactPhone: church.phone || undefined,
-        churchId: church.id,
+        churchName: church?.name || 'Your Church',
+        contactEmail: church?.email || undefined,
+        contactPhone: church?.phone || undefined,
+        churchId: church?.id || churchId,
         personId: person.id,
         emailType: 'MAGIC_LINK',
       });
@@ -212,60 +319,34 @@ export class ProfileService {
   }
 
   /**
-   * Single place that decides whether a profile token may be used, so the GET
-   * and PATCH rules cannot drift apart.
+   * Validates a profile magic link token. On the first open, records
+   * profileTokenOpenedAt so the user is given a grace period to complete the form.
    */
-  private async resolveToken(
-    token: string,
-    { forUpdate }: { forUpdate: boolean },
-  ): Promise<TokenPerson> {
-    if (!token || token.trim() === '') {
-      throw linkError('Token is required', 'PROFILE_LINK_INVALID');
-    }
-
+  async getByToken(token: string) {
     const person = await this.prisma.person.findUnique({
       where: { profileToken: token },
       include: TOKEN_PERSON_INCLUDE,
     });
 
     if (!person) {
-      throw linkError('Invalid or expired magic link', 'PROFILE_LINK_INVALID');
-    }
-
-    const now = Date.now();
-    const expiresAt = person.profileTokenExpiresAt;
-    if (!expiresAt) {
       throw linkError(
-        'Magic link has expired. Please request a new one.',
-        'PROFILE_LINK_EXPIRED',
+        'This link is invalid or has already been used. Please request a new one.',
+        'PROFILE_LINK_INVALID',
       );
     }
 
-    if (expiresAt.getTime() >= now) return person;
-
-    // Expired: a form opened in time may still be saved during the grace window.
-    const openedAt = person.profileTokenOpenedAt;
-    const withinGrace =
-      forUpdate &&
-      openedAt &&
-      openedAt.getTime() <= expiresAt.getTime() &&
-      now <= openedAt.getTime() + PROFILE_SAVE_GRACE_MS;
-    if (!withinGrace) {
+    const now = new Date();
+    if (person.profileTokenExpiresAt && person.profileTokenExpiresAt < now) {
       throw linkError(
-        'Magic link has expired. Please request a new one.',
+        'This link has expired. Links are valid for 30 minutes. Please request a new one.',
         'PROFILE_LINK_EXPIRED',
       );
     }
-    return person;
-  }
-
-  async getByToken(token: string) {
-    const person = await this.resolveToken(token, { forUpdate: false });
 
     if (!person.profileTokenOpenedAt) {
       await this.prisma.person.update({
         where: { id: person.id },
-        data: { profileTokenOpenedAt: new Date() },
+        data: { profileTokenOpenedAt: now },
       });
     }
 
@@ -297,25 +378,66 @@ export class ProfileService {
         })),
       },
       church: person.church,
-      availableDepartments,
+      availableDepartments: availableDepartments.map((d) => ({
+        id: d.id,
+        name: d.name,
+        description: d.description,
+      })),
     };
   }
 
+  /**
+   * Saves profile edits submitted via magic link and consumes the token.
+   * If a PIN is set or exists after save, returns an accessToken.
+   */
   async updateByToken(token: string, dto: UpdateProfileDto) {
-    const person = await this.resolveToken(token, { forUpdate: true });
+    const person = await this.prisma.person.findUnique({
+      where: { profileToken: token },
+      include: { departmentMemberships: true },
+    });
 
-    if (
-      !person.namesConfirmed &&
-      (!dto.firstName?.trim() || !dto.lastName?.trim())
-    ) {
-      throw new BadRequestException({
-        message: 'First name and last name are required',
-        code: 'NAMES_REQUIRED',
-      });
+    if (!person) {
+      throw linkError(
+        'This link is invalid or has already been used. Please request a new one.',
+        'PROFILE_LINK_INVALID',
+      );
+    }
+
+    const now = Date.now();
+    const expiresAtMs = person.profileTokenExpiresAt?.getTime() ?? 0;
+    const openedAtMs = person.profileTokenOpenedAt?.getTime() ?? 0;
+
+    const unexpired = expiresAtMs > now;
+    const openedGraceActive =
+      openedAtMs > 0 &&
+      openedAtMs <= expiresAtMs &&
+      now - openedAtMs < PROFILE_SAVE_GRACE_MS;
+
+    if (!unexpired && !openedGraceActive) {
+      throw linkError(
+        'This link has expired. Links are valid for 30 minutes. Please request a new one.',
+        'PROFILE_LINK_EXPIRED',
+      );
+    }
+
+    // Name completeness guard for placeholder visitors
+    if (!person.namesConfirmed) {
+      const effectiveFirstName = dto.firstName ?? person.firstName;
+      const effectiveLastName = dto.lastName ?? person.lastName;
+      const isPlaceholder =
+        effectiveFirstName === 'New' && effectiveLastName === 'Visitor';
+      const isMissing =
+        !effectiveFirstName?.trim() || !effectiveLastName?.trim();
+
+      if (isPlaceholder || isMissing) {
+        throw new BadRequestException({
+          message: 'First and last name are required to set up your profile',
+          code: 'NAMES_REQUIRED',
+        });
+      }
     }
 
     const effectiveStatus = dto.membershipStatus ?? person.membershipStatus;
-    // Visitors and members have no departments: treat the request as a clear.
     const departmentIds =
       effectiveStatus === MembershipStatus.VISITOR ||
       effectiveStatus === MembershipStatus.MEMBER
@@ -367,7 +489,6 @@ export class ProfileService {
     } = dto;
 
     const personUpdateData: Prisma.PersonUpdateInput = {
-      // Invalidate the token upon successful save (single-use)
       profileToken: null,
       profileTokenExpiresAt: null,
       profileTokenOpenedAt: null,
@@ -389,6 +510,7 @@ export class ProfileService {
       personUpdateData.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
     }
     if (dto.pin) {
+      validatePinStrength(dto.pin);
       personUpdateData.pinHash = await bcrypt.hash(dto.pin, 10);
       personUpdateData.pinFailedAttempts = 0;
       personUpdateData.pinLockedUntil = null;
@@ -402,7 +524,6 @@ export class ProfileService {
       });
 
       if (departmentIds !== undefined) {
-        // Remove memberships not in departmentIds
         await tx.departmentMembership.deleteMany({
           where: {
             personId: person.id,
@@ -410,7 +531,6 @@ export class ProfileService {
           },
         });
 
-        // Add newly selected memberships
         const existingDeptIds = new Set(
           person.departmentMemberships.map((m) => m.departmentId),
         );
@@ -439,31 +559,20 @@ export class ProfileService {
         },
       });
 
-      return {
+      const response: {
+        message: string;
+        person: ReturnType<typeof this.formatPerson>;
+        accessToken?: string;
+      } = {
         message: 'Profile updated successfully',
-        person: {
-          id: updatedPerson.id,
-          firstName: updatedPerson.firstName,
-          lastName: updatedPerson.lastName,
-          namesConfirmed: updatedPerson.namesConfirmed,
-          hasPin: Boolean(updatedPerson.pinHash),
-          email: updatedPerson.email,
-          phone: updatedPerson.phone,
-          gender: updatedPerson.gender,
-          dateOfBirth: updatedPerson.dateOfBirth
-            ? updatedPerson.dateOfBirth.toISOString().split('T')[0]
-            : null,
-          address: updatedPerson.address,
-          membershipStatus: updatedPerson.membershipStatus,
-          departments: freshDepartments.map((m) => ({
-            id: m.department.id,
-            name: m.department.name,
-            description: m.department.description,
-            role: m.role,
-            joinedAt: m.joinedAt,
-          })),
-        },
+        person: this.formatPerson(updatedPerson, freshDepartments),
       };
+
+      if (updatedPerson.pinHash) {
+        response.accessToken = await this.generateMemberToken(updatedPerson);
+      }
+
+      return response;
     });
   }
 
@@ -501,6 +610,22 @@ export class ProfileService {
         where: { phone, churchId },
         include: TOKEN_PERSON_INCLUDE,
       });
+
+      // Match alternative domestic Nigerian formats (0803... vs +234803...) if not found under normalized E.164
+      if (!person) {
+        const phoneCandidates = getPhoneCandidates(rawIdentifier).filter(
+          (c) => c !== phone,
+        );
+        if (phoneCandidates.length > 0) {
+          person = await this.prisma.person.findFirst({
+            where: {
+              churchId,
+              phone: { in: phoneCandidates },
+            },
+            include: TOKEN_PERSON_INCLUDE,
+          });
+        }
+      }
     }
 
     if (!person) {
@@ -539,14 +664,13 @@ export class ProfileService {
       const maxAttempts = 5;
       const isNowLocked = attempts >= maxAttempts;
       const lockDurationMs = 15 * 60 * 1000;
+      const lockedUntilDate = new Date(Date.now() + lockDurationMs);
 
       await this.prisma.person.update({
         where: { id: person.id },
         data: {
           pinFailedAttempts: isNowLocked ? 0 : attempts,
-          pinLockedUntil: isNowLocked
-            ? new Date(Date.now() + lockDurationMs)
-            : null,
+          pinLockedUntil: isNowLocked ? lockedUntilDate : null,
         },
       });
 
@@ -555,6 +679,7 @@ export class ProfileService {
           message:
             'Too many incorrect PIN attempts. Your account has been temporarily locked for 15 minutes. You can also sign in via magic link.',
           code: 'PIN_LOCKED',
+          lockedUntil: lockedUntilDate.toISOString(),
         });
       }
 
@@ -577,52 +702,143 @@ export class ProfileService {
     }
 
     // 7. Generate member JWT
-    const jwtSecret = this.configService.get<string>('jwt.secret');
-    const jwtExpiresIn =
-      this.configService.get<string>('jwt.expiresIn') || '30d';
-
-    const accessToken = await this.jwtService.signAsync(
-      {
-        sub: person.id,
-        churchId: person.churchId,
-        email: person.email,
-        phone: person.phone,
-        membershipStatus: person.membershipStatus,
-        aud: 'dove:member',
-        type: 'MEMBER',
-      },
-      {
-        secret: jwtSecret,
-        expiresIn: jwtExpiresIn as unknown as number,
-      },
-    );
+    const accessToken = await this.generateMemberToken(person);
 
     return {
       message: 'Login successful',
       accessToken,
-      person: {
-        id: person.id,
-        firstName: person.firstName,
-        lastName: person.lastName,
-        namesConfirmed: person.namesConfirmed,
-        hasPin: true,
-        email: person.email,
-        phone: person.phone,
-        gender: person.gender,
-        dateOfBirth: person.dateOfBirth
-          ? person.dateOfBirth.toISOString().split('T')[0]
-          : null,
-        address: person.address,
-        membershipStatus: person.membershipStatus,
-        departments: person.departmentMemberships.map((m) => ({
-          id: m.department.id,
-          name: m.department.name,
-          description: m.department.description,
-          role: m.role,
-          joinedAt: m.joinedAt,
-        })),
-      },
+      person: this.formatPerson(person, person.departmentMemberships),
       church: person.church,
     };
+  }
+
+  /**
+   * Retrieves authenticated member's profile and church context.
+   * Generates a renewed accessToken to maintain sliding session.
+   */
+  async getMe(personId: string) {
+    const person = await this.prisma.person.findUnique({
+      where: { id: personId },
+      include: TOKEN_PERSON_INCLUDE,
+    });
+
+    if (!person) {
+      throw new UnauthorizedException('Member not found');
+    }
+
+    const accessToken = await this.generateMemberToken(person);
+
+    return {
+      person: this.formatPerson(person, person.departmentMemberships),
+      church: person.church,
+      accessToken,
+    };
+  }
+
+  /**
+   * Sets or changes the member's 4-digit PIN.
+   * If person.hasPin is true, currentPin is required and validated against lockout rules.
+   * Weak PINs are rejected with 400 PIN_TOO_WEAK.
+   */
+  async changePin(personId: string, dto: ChangePinDto) {
+    validatePinStrength(dto.newPin);
+
+    const person = await this.prisma.person.findUnique({
+      where: { id: personId },
+    });
+
+    if (!person) {
+      throw new UnauthorizedException('Member not found');
+    }
+
+    const now = new Date();
+    if (person.pinLockedUntil && person.pinLockedUntil > now) {
+      const remainingMinutes = Math.ceil(
+        (person.pinLockedUntil.getTime() - now.getTime()) / 60000,
+      );
+      throw new ForbiddenException({
+        message: `Account is temporarily locked. Try again in ${remainingMinutes} minute(s) or use a magic link.`,
+        code: 'PIN_LOCKED',
+        lockedUntil: person.pinLockedUntil.toISOString(),
+      });
+    }
+
+    if (person.pinHash) {
+      if (!dto.currentPin) {
+        throw new BadRequestException({
+          message: 'Current PIN is required to change your PIN',
+          code: 'CURRENT_PIN_REQUIRED',
+        });
+      }
+
+      const isMatch = await bcrypt.compare(dto.currentPin, person.pinHash);
+      if (!isMatch) {
+        const attempts = person.pinFailedAttempts + 1;
+        const maxAttempts = 5;
+        const isNowLocked = attempts >= maxAttempts;
+        const lockDurationMs = 15 * 60 * 1000;
+        const lockedUntilDate = new Date(Date.now() + lockDurationMs);
+
+        await this.prisma.person.update({
+          where: { id: person.id },
+          data: {
+            pinFailedAttempts: isNowLocked ? 0 : attempts,
+            pinLockedUntil: isNowLocked ? lockedUntilDate : null,
+          },
+        });
+
+        if (isNowLocked) {
+          throw new ForbiddenException({
+            message:
+              'Too many incorrect PIN attempts. Your account has been temporarily locked for 15 minutes. You can also sign in via magic link.',
+            code: 'PIN_LOCKED',
+            lockedUntil: lockedUntilDate.toISOString(),
+          });
+        }
+
+        throw new UnauthorizedException({
+          message: `Incorrect PIN. ${maxAttempts - attempts} attempt(s) remaining.`,
+          code: 'INVALID_PIN',
+          attemptsRemaining: maxAttempts - attempts,
+        });
+      }
+    }
+
+    const pinHash = await bcrypt.hash(dto.newPin, 10);
+    await this.prisma.person.update({
+      where: { id: person.id },
+      data: {
+        pinHash,
+        pinFailedAttempts: 0,
+        pinLockedUntil: null,
+      },
+    });
+
+    return {
+      message: 'PIN updated successfully',
+    };
+  }
+
+  /**
+   * Revokes the current member session.
+   */
+  logout(
+    payload: MemberJwtPayload,
+    rawToken?: string,
+  ): Promise<{ message: string }> {
+    const expMs = payload.exp
+      ? payload.exp * 1000
+      : Date.now() + 30 * 24 * 60 * 60 * 1000;
+
+    if (payload.jti) {
+      this.memberSessionService.revoke(payload.jti, expMs);
+    }
+    if (rawToken) {
+      this.memberSessionService.revoke(rawToken, expMs);
+    }
+
+    return Promise.resolve({
+      message: 'Logged out successfully',
+    });
   }
 }

@@ -1,6 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { MembershipStatus } from '@prisma/client';
+import { MemberSessionService } from './member-session.service';
+import { MemberAuthGuard, MemberJwtPayload } from './guards/member-auth.guard';
+import { ActiveMemberData } from './decorators/current-member.decorator';
 import { ProfileController } from './profile.controller';
 import { ProfileService } from './profile.service';
 
@@ -11,6 +16,9 @@ describe('ProfileController', () => {
     getByToken: jest.Mock;
     updateByToken: jest.Mock;
     login: jest.Mock;
+    getMe: jest.Mock;
+    changePin: jest.Mock;
+    logout: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -19,6 +27,9 @@ describe('ProfileController', () => {
       getByToken: jest.fn(),
       updateByToken: jest.fn(),
       login: jest.fn(),
+      getMe: jest.fn(),
+      changePin: jest.fn(),
+      logout: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -29,6 +40,16 @@ describe('ProfileController', () => {
           provide: ProfileService,
           useValue: serviceMock,
         },
+        {
+          provide: JwtService,
+          useValue: { verifyAsync: jest.fn() },
+        },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('test-secret') },
+        },
+        MemberSessionService,
+        MemberAuthGuard,
       ],
     }).compile();
 
@@ -66,7 +87,9 @@ describe('ProfileController', () => {
       firstName: 'Jane',
       membershipStatus: MembershipStatus.MEMBER,
     };
-    const result = await controller.updateByToken('token-123', dto);
+    const result = (await controller.updateByToken('token-123', dto)) as {
+      person: { membershipStatus: MembershipStatus };
+    };
     expect(serviceMock.updateByToken).toHaveBeenCalledWith('token-123', dto);
     expect(result.person.membershipStatus).toBe(MembershipStatus.MEMBER);
   });
@@ -84,5 +107,40 @@ describe('ProfileController', () => {
     const result = await controller.login(dto);
     expect(serviceMock.login).toHaveBeenCalledWith(dto);
     expect(result.accessToken).toBe('jwt-token');
+  });
+
+  it('should call getMe', async () => {
+    serviceMock.getMe.mockResolvedValue({
+      person: { id: 'p-1', firstName: 'Jane' },
+      church: { id: 'church-1', name: 'Amazing Grace' },
+    });
+    const member: ActiveMemberData = { sub: 'p-1', churchId: 'church-1' };
+    const result = await controller.getMe(member);
+    expect(serviceMock.getMe).toHaveBeenCalledWith('p-1');
+    expect(result.person.id).toBe('p-1');
+  });
+
+  it('should call changePin', async () => {
+    serviceMock.changePin.mockResolvedValue({
+      message: 'PIN updated successfully',
+    });
+    const member: ActiveMemberData = { sub: 'p-1', churchId: 'church-1' };
+    const dto = { currentPin: '2846', newPin: '8137' };
+    const result = await controller.changePin(member, dto);
+    expect(serviceMock.changePin).toHaveBeenCalledWith('p-1', dto);
+    expect(result.message).toBe('PIN updated successfully');
+  });
+
+  it('should call logout', async () => {
+    serviceMock.logout.mockResolvedValue({
+      message: 'Logged out successfully',
+    });
+    const req: { member: MemberJwtPayload; rawToken: string } = {
+      member: { sub: 'p-1', churchId: 'church-1', jti: 'jti-1' },
+      rawToken: 'token-xyz',
+    };
+    const result = await controller.logout(req);
+    expect(serviceMock.logout).toHaveBeenCalledWith(req.member, 'token-xyz');
+    expect(result.message).toBe('Logged out successfully');
   });
 });

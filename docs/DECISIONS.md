@@ -149,9 +149,17 @@ Decision
 2. During member onboarding via magic link, PIN setup is an explicit step between profile completion and the celebration screen:
    - Collected in `ProfileFlow` before final save.
    - Submitted in a single atomic request via `PATCH /profile/:token` with `pin?: string`.
-3. 4-Digit PIN Security & Lockout:
-   - 5 consecutive failed PIN attempts lock the account for 15 minutes (`pinLockedUntil`, code: `PIN_LOCKED`).
+3. 4-Digit PIN Security, Lockout & Denylist:
+   - 5 consecutive failed PIN attempts lock the account for 15 minutes (`pinLockedUntil`, code: `PIN_LOCKED`, returns `lockedUntil`).
+   - Incorrect attempts return `INVALID_PIN` with `attemptsRemaining`.
+   - Weak PINs (repeated digits like `1111`, ascending/descending runs like `1234`/`4321`, or common PINs `1212`, `1122`, `2580`, `0852`, `1004`, `6969`) are rejected with `400` and code `PIN_TOO_WEAK`.
    - Forgot PIN triggers existing magic link flow (`POST /profile/claim`), allowing members to reset their PIN upon opening the link.
-4. Membership IDs:
+   - In-app PIN change/setting supported via `PUT /api/v1/profile/me/pin` with `{ currentPin?, newPin }`.
+4. Member Session & Revocation:
+   - Access tokens have a 30-day lifetime issued with `aud: 'dove:member'` and `type: 'MEMBER'`.
+   - `GET /api/v1/profile/me` re-issues a renewed token for a sliding session window.
+   - `POST /api/v1/profile/logout` revokes the session token (`jti`).
+   - Abuse protection: `POST /api/v1/profile/login` is throttled per IP (15 requests/min) and per account. Phone numbers match both domestic `0803...` and E.164 `+234803...` formats.
+5. Membership IDs:
    - Retained and reserved strictly for `MEMBER`, `WORKER`, `LEADER`, and `PASTOR` (excluding `VISITOR`).
 

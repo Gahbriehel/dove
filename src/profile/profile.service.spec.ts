@@ -12,6 +12,7 @@ import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
 import { callArg } from '../common/testing/mock.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClaimRateLimiter } from './claim-rate-limiter';
+import { MemberSessionService } from './member-session.service';
 import { ProfileService } from './profile.service';
 
 describe('ProfileService', () => {
@@ -134,6 +135,7 @@ describe('ProfileService', () => {
       providers: [
         ProfileService,
         ClaimRateLimiter,
+        MemberSessionService,
         {
           provide: PrismaService,
           useValue: prismaMock,
@@ -357,11 +359,11 @@ describe('ProfileService', () => {
       });
       prismaMock.department.findMany.mockResolvedValue([{ id: 'dept-1' }]);
 
-      const result = await service.updateByToken('valid-token', {
+      const result = (await service.updateByToken('valid-token', {
         firstName: 'Jane',
         membershipStatus: MembershipStatus.WORKER,
         departmentIds: ['dept-1'],
-      });
+      })) as { message: string; person: { firstName: string } };
 
       expect(result.message).toContain('Profile updated successfully');
       expect(result.person.firstName).toBe('Jane');
@@ -632,17 +634,72 @@ describe('ProfileService', () => {
         (cb: (t: unknown) => Promise<unknown>) => cb(tx),
       );
 
-      const result = await service.updateByToken('x', {
-        pin: '1234',
-      });
+      const result = (await service.updateByToken('x', {
+        pin: '2846',
+      })) as { person: { hasPin: boolean }; accessToken?: string };
 
       expect(tx.person.update).toHaveBeenCalled();
       const updateData = callArg(tx.person.update).data;
       expect(updateData.pinHash).toBeDefined();
-      expect(updateData.pinHash).not.toBe('1234'); // Must be hashed
+      expect(updateData.pinHash).not.toBe('2846'); // Must be hashed
       expect(updateData.pinFailedAttempts).toBe(0);
       expect(updateData.pinLockedUntil).toBeNull();
       expect(result.person.hasPin).toBe(true);
+      expect(result.accessToken).toBe('mock-member-jwt-token');
+    });
+
+    it('rejects weak PIN on updateByToken with PIN_TOO_WEAK', async () => {
+      prismaMock.person.findUnique.mockResolvedValue(person());
+
+      await expect(
+        service.updateByToken('x', { pin: '1234' }),
+      ).rejects.toMatchObject({
+        response: { code: 'PIN_TOO_WEAK' },
+      });
+
+      await expect(
+        service.updateByToken('x', { pin: '0000' }),
+      ).rejects.toMatchObject({
+        response: { code: 'PIN_TOO_WEAK' },
+      });
+
+      await expect(
+        service.updateByToken('x', { pin: '4321' }),
+      ).rejects.toMatchObject({
+        response: { code: 'PIN_TOO_WEAK' },
+      });
+
+      await expect(
+        service.updateByToken('x', { pin: '1212' }),
+      ).rejects.toMatchObject({
+        response: { code: 'PIN_TOO_WEAK' },
+      });
+    });
+
+    it('omits accessToken on updateByToken when person has no PIN after save', async () => {
+      prismaMock.person.findUnique.mockResolvedValue(person());
+      const tx = {
+        person: {
+          update: jest
+            .fn()
+            .mockResolvedValue({ id: 'person-1', pinHash: null }),
+        },
+        departmentMembership: {
+          deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          create: jest.fn(),
+          findMany: jest.fn().mockResolvedValue([]),
+        },
+      };
+      prismaMock.$transaction.mockImplementationOnce(
+        (cb: (t: unknown) => Promise<unknown>) => cb(tx),
+      );
+
+      const result = (await service.updateByToken('x', {
+        firstName: 'Jane',
+      })) as { person: { hasPin: boolean }; accessToken?: string };
+
+      expect(result.person.hasPin).toBe(false);
+      expect(result.accessToken).toBeUndefined();
     });
   });
 
@@ -670,7 +727,6 @@ describe('ProfileService', () => {
     });
 
     it('successfully logs in with email and correct PIN', async () => {
-      // Mock bcrypt.compare to return true for "1234"
       prismaMock.person.findFirst.mockResolvedValue(validPerson());
 
       const result = await service.login({
@@ -698,6 +754,20 @@ describe('ProfileService', () => {
           where: { phone: '+2348012345678', churchId: 'church-1' },
         }),
       );
+    });
+
+    it('finds person using candidate phone search if domestic format is stored in DB', async () => {
+      prismaMock.person.findFirst
+        .mockResolvedValueOnce(null) // first try with +234... fails
+        .mockResolvedValueOnce(validPerson({ phone: '08012345678' })); // fallback finds it
+
+      const result = await service.login({
+        identifier: '+2348012345678',
+        pin: '1234',
+      });
+
+      expect(result.accessToken).toBe('mock-member-jwt-token');
+      expect(prismaMock.person.findFirst).toHaveBeenCalledTimes(2);
     });
 
     it('throws UnauthorizedException if person is not found', async () => {
@@ -738,34 +808,225 @@ describe('ProfileService', () => {
       });
     });
 
-    it('locks account for 15 minutes when reaching 5 failed attempts', async () => {
+    it('locks account for 15 minutes when reaching 5 failed attempts and returns lockedUntil', async () => {
       prismaMock.person.findFirst.mockResolvedValue(
         validPerson({ pinFailedAttempts: 4 }),
       );
       prismaMock.person.update.mockResolvedValue({});
 
-      await expect(
-        service.login({ identifier: 'sarah@example.com', pin: '9999' }),
-      ).rejects.toMatchObject({
-        response: { code: 'PIN_LOCKED' },
-      });
+      try {
+        await service.login({ identifier: 'sarah@example.com', pin: '9999' });
+        fail('Expected login to throw');
+      } catch (err: unknown) {
+        const error = err as {
+          response: { code: string; lockedUntil: string };
+        };
+        expect(error.response).toMatchObject({ code: 'PIN_LOCKED' });
+        expect(error.response.lockedUntil).toBeDefined();
+        expect(new Date(error.response.lockedUntil).getTime()).toBeGreaterThan(
+          Date.now(),
+        );
+      }
 
       const updateData = callArg(prismaMock.person.update).data;
       expect(updateData.pinFailedAttempts).toBe(0);
       expect(updateData.pinLockedUntil).toBeInstanceOf(Date);
     });
 
-    it('rejects login immediately if account is currently locked', async () => {
+    it('rejects login immediately if account is currently locked and returns lockedUntil', async () => {
       const lockedUntil = new Date(Date.now() + 10 * 60 * 1000);
       prismaMock.person.findFirst.mockResolvedValue(
         validPerson({ pinLockedUntil: lockedUntil }),
       );
 
+      try {
+        await service.login({ identifier: 'sarah@example.com', pin: '1234' });
+        fail('Expected login to throw');
+      } catch (err: unknown) {
+        const error = err as {
+          response: { code: string; lockedUntil: string };
+        };
+        expect(error.response).toMatchObject({ code: 'PIN_LOCKED' });
+        expect(error.response.lockedUntil).toBe(lockedUntil.toISOString());
+      }
+    });
+  });
+
+  describe('getMe', () => {
+    it('returns formatted person, church, and sliding session accessToken', async () => {
+      const personData = {
+        id: 'p-1',
+        churchId: 'church-1',
+        firstName: 'Sarah',
+        lastName: 'Adeyemi',
+        email: 'sarah@example.com',
+        phone: '+2348012345678',
+        gender: null,
+        dateOfBirth: null,
+        address: null,
+        membershipStatus: MembershipStatus.WORKER,
+        namesConfirmed: true,
+        pinHash: 'hashed',
+        church: { id: 'church-1', name: 'Amazing Grace' },
+        departmentMemberships: [],
+      };
+      prismaMock.person.findUnique.mockResolvedValue(personData);
+
+      const result = await service.getMe('p-1');
+      expect(result.person.id).toBe('p-1');
+      expect(result.person.hasPin).toBe(true);
+      expect(result.church.id).toBe('church-1');
+      expect(result.accessToken).toBe('mock-member-jwt-token');
+    });
+
+    it('throws UnauthorizedException when person is not found', async () => {
+      prismaMock.person.findUnique.mockResolvedValue(null);
+      await expect(service.getMe('non-existent')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+  });
+
+  describe('changePin', () => {
+    const existingPerson = (overrides = {}) => ({
+      id: 'p-1',
+      churchId: 'church-1',
+      pinHash: '$2b$10$a2ElV7W5iQIHqLvwKiPpcO/KcRufocp3bOXORd4oDwf..hIO4Tghi', // '1234'
+      pinFailedAttempts: 0,
+      pinLockedUntil: null,
+      ...overrides,
+    });
+
+    it('rejects weak new PIN with 400 PIN_TOO_WEAK', async () => {
       await expect(
-        service.login({ identifier: 'sarah@example.com', pin: '1234' }),
+        service.changePin('p-1', { currentPin: '1234', newPin: '0000' }),
       ).rejects.toMatchObject({
-        response: { code: 'PIN_LOCKED' },
+        response: { code: 'PIN_TOO_WEAK' },
       });
+    });
+
+    it('rejects if account is already locked and returns lockedUntil', async () => {
+      const lockedUntil = new Date(Date.now() + 10 * 60 * 1000);
+      prismaMock.person.findUnique.mockResolvedValue(
+        existingPerson({ pinLockedUntil: lockedUntil }),
+      );
+
+      try {
+        await service.changePin('p-1', { currentPin: '1234', newPin: '8137' });
+        fail('Expected changePin to throw');
+      } catch (err: unknown) {
+        const error = err as {
+          response: { code: string; lockedUntil: string };
+        };
+        expect(error.response).toMatchObject({ code: 'PIN_LOCKED' });
+        expect(error.response.lockedUntil).toBe(lockedUntil.toISOString());
+      }
+    });
+
+    it('allows setting PIN without currentPin when person has no PIN set yet', async () => {
+      prismaMock.person.findUnique.mockResolvedValue(
+        existingPerson({ pinHash: null }),
+      );
+      prismaMock.person.update.mockResolvedValue({});
+
+      const result = await service.changePin('p-1', { newPin: '8137' });
+      expect(result.message).toBe('PIN updated successfully');
+      const updateCall = callArg<{
+        where: { id: string };
+        data: { pinFailedAttempts: number; pinLockedUntil: null };
+      }>(prismaMock.person.update);
+      expect(updateCall.where.id).toBe('p-1');
+      expect(updateCall.data.pinFailedAttempts).toBe(0);
+      expect(updateCall.data.pinLockedUntil).toBeNull();
+    });
+
+    it('requires currentPin when person already has a PIN', async () => {
+      prismaMock.person.findUnique.mockResolvedValue(existingPerson());
+
+      await expect(
+        service.changePin('p-1', { newPin: '8137' }),
+      ).rejects.toMatchObject({
+        response: { code: 'CURRENT_PIN_REQUIRED' },
+      });
+    });
+
+    it('increments failed attempts when currentPin is wrong', async () => {
+      prismaMock.person.findUnique.mockResolvedValue(
+        existingPerson({ pinFailedAttempts: 2 }),
+      );
+      prismaMock.person.update.mockResolvedValue({});
+
+      await expect(
+        service.changePin('p-1', { currentPin: '9999', newPin: '8137' }),
+      ).rejects.toMatchObject({
+        response: { code: 'INVALID_PIN', attemptsRemaining: 2 },
+      });
+
+      expect(prismaMock.person.update).toHaveBeenCalledWith({
+        where: { id: 'p-1' },
+        data: { pinFailedAttempts: 3, pinLockedUntil: null },
+      });
+    });
+
+    it('locks account on 5th incorrect currentPin attempt and returns lockedUntil', async () => {
+      prismaMock.person.findUnique.mockResolvedValue(
+        existingPerson({ pinFailedAttempts: 4 }),
+      );
+      prismaMock.person.update.mockResolvedValue({});
+
+      try {
+        await service.changePin('p-1', { currentPin: '9999', newPin: '8137' });
+        fail('Expected changePin to throw');
+      } catch (err: unknown) {
+        const error = err as {
+          response: { code: string; lockedUntil: string };
+        };
+        expect(error.response).toMatchObject({ code: 'PIN_LOCKED' });
+        expect(error.response.lockedUntil).toBeDefined();
+      }
+
+      const updateData = callArg(prismaMock.person.update).data;
+      expect(updateData.pinFailedAttempts).toBe(0);
+      expect(updateData.pinLockedUntil).toBeInstanceOf(Date);
+    });
+
+    it('successfully changes PIN with valid currentPin and resets failed attempts', async () => {
+      prismaMock.person.findUnique.mockResolvedValue(
+        existingPerson({ pinFailedAttempts: 3 }),
+      );
+      prismaMock.person.update.mockResolvedValue({});
+
+      const result = await service.changePin('p-1', {
+        currentPin: '1234',
+        newPin: '8137',
+      });
+
+      expect(result.message).toBe('PIN updated successfully');
+      const updateData = callArg(prismaMock.person.update).data;
+      expect(updateData.pinHash).toBeDefined();
+      expect(updateData.pinFailedAttempts).toBe(0);
+      expect(updateData.pinLockedUntil).toBeNull();
+    });
+  });
+
+  describe('logout', () => {
+    it('revokes member session jti and rawToken', async () => {
+      const sessionService = (
+        service as unknown as { memberSessionService: MemberSessionService }
+      ).memberSessionService;
+      const revokeSpy = jest.spyOn(sessionService, 'revoke');
+
+      const payload = {
+        sub: 'p-1',
+        churchId: 'church-1',
+        jti: 'jti-abc',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      };
+
+      const result = await service.logout(payload, 'token-raw');
+      expect(result.message).toBe('Logged out successfully');
+      expect(revokeSpy).toHaveBeenCalledWith('jti-abc', payload.exp * 1000);
+      expect(revokeSpy).toHaveBeenCalledWith('token-raw', payload.exp * 1000);
     });
   });
 });

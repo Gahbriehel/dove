@@ -217,7 +217,7 @@ Returns `person` (now including `namesConfirmed`), `church` (now including `shor
 
 PATCH /profile/:token
 
-Saves the profile and consumes the token. Accepted if the token has not expired, or if it was opened before expiry and the save is within 30 minutes of opening. Sets `namesConfirmed: true`. `VISITOR`/`MEMBER` have departments cleared.
+Saves the profile and consumes the token. Accepted if the token has not expired, or if it was opened before expiry and the save is within 30 minutes of opening. Sets `namesConfirmed: true`. `VISITOR`/`MEMBER` have departments cleared. When the person has a PIN after the save, returns `accessToken` alongside `person`.
 
 Errors (`400`, body includes `code`):
 
@@ -227,8 +227,34 @@ Errors (`400`, body includes `code`):
 | `PROFILE_LINK_EXPIRED` | Token expired (and, for `PATCH`, outside the grace window) |
 | `NAMES_REQUIRED` | `PATCH` while `namesConfirmed` is false and `firstName`/`lastName` is missing |
 | `DEPARTMENT_REQUIRED` | `WORKER` with no departments, when the church has at least one department |
+| `PIN_TOO_WEAK` | PIN is repeated digits, ascending/descending runs, or common denylist |
 
 The link base URL comes from the `PROFILE_URL` env var (falls back to `APP_URL/profile`). Profile tokens are redacted from server logs (`/profile/:token`).
+
+---
+
+# Member Session & PIN Endpoints
+
+POST /profile/login
+
+Body: `{ identifier: string, pin: string, churchSlug?: string }`
+Authenticates a member using email or phone number and a 4-digit PIN. Resolves both domestic `0803...` and E.164 `+234803...` phone numbers to the same record. Rate limited to 15 requests per minute per IP (429) and locked after 5 consecutive failed attempts for 15 minutes (403, `PIN_LOCKED` with `lockedUntil`). Returns `{ message, accessToken, person, church }`.
+
+GET /profile/me
+
+Header: `Authorization: Bearer <accessToken>`
+Validates member session. Returns `{ person, church, accessToken }`. The returned `accessToken` is re-issued for a sliding 30-day session window. Returns 401 if token is missing, invalid, expired or revoked.
+
+PUT /profile/me/pin
+
+Header: `Authorization: Bearer <accessToken>`
+Body: `{ currentPin?: string, newPin: string }`
+Allows member to set or change their 4-digit PIN. `currentPin` is required only if `person.hasPin` is true. Wrong current PIN counts toward the 5-attempt lockout (401 `INVALID_PIN` with `attemptsRemaining`; 403 `PIN_LOCKED` with `lockedUntil`). Rejects weak PINs with 400 `PIN_TOO_WEAK`. Success resets failed attempts and lockout.
+
+POST /profile/logout
+
+Header: `Authorization: Bearer <accessToken>`
+Revokes the member session so the token cannot be reused. Returns 200 `{ message: 'Logged out successfully' }`.
 
 ---
 

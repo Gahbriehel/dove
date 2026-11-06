@@ -1,6 +1,6 @@
-# PWA Frontend Integration Guide — Church Member Relationship Platform (Phase 2)
+# PWA Frontend Integration Guide — Church Member Relationship Platform (Phase 2 & ADR-007)
 
-This guide provides everything needed to build the **Progressive Web App (PWA)** frontend (`dove-app`). It covers the passwordless secure-link claim flow, profile setup, department self-selection, and the post-save PWA installation prompt.
+This guide provides complete instructions and API contracts for building the **Progressive Web App (PWA)** frontend (`abwog-lifestyle`). It covers the passwordless magic-link onboarding/recovery flow, returning member 4-digit PIN authentication, sliding session management via Next.js Server Actions, in-app PIN updates, and logout.
 
 ---
 
@@ -8,53 +8,105 @@ This guide provides everything needed to build the **Progressive Web App (PWA)**
 
 ```mermaid
 sequenceDiagram
+    autonumber
     actor Member as Church Member
-    participant PWA as Dove PWA (dove-app)
-    participant API as Dove API (/profile)
-    participant Email as Email Service
+    participant PWA as Member PWA (Next.js Server Actions)
+    participant Dove as Dove API (/profile)
+    participant Cookie as HTTP-Only Session Cookie
 
-    Member->>PWA: Scans QR Code → visits /profile
-    Member->>PWA: Enters email address
-    PWA->>API: POST /profile/claim
-    API->>Email: Emails a 30-min secure link
-    API-->>PWA: 200 OK (Generic anti-enumeration message)
-    PWA-->>Member: "Check your email for your link"
-
+    Note over Member,Dove: FLOW A: Onboarding & Recovery (Magic Link)
+    Member->>PWA: Enter email on /profile
+    PWA->>Dove: POST /profile/claim { email }
+    Dove-->>PWA: 200 OK (Generic message)
+    Dove-->>Member: Magic link email sent
     Member->>PWA: Clicks link → lands on /profile/[token]
-    PWA->>API: GET /profile/:token
-    API-->>PWA: Returns Person profile + Available Church Departments
-    PWA-->>Member: Renders pre-filled form + Department selector
+    PWA->>Dove: GET /profile/:token
+    Dove-->>PWA: Person data + Available departments
+    Member->>PWA: Completes details, selects departments, sets 4-digit PIN
+    PWA->>Dove: PATCH /profile/:token { ..., pin }
+    Dove-->>PWA: 200 OK { person, accessToken }
+    PWA->>Cookie: Store accessToken (HTTP-only, 30 days)
+    PWA-->>Member: Profile saved & logged in! Prompt PWA install
 
-    Member->>PWA: Reviews details, selects status & departments → clicks Save
-    PWA->>API: PATCH /profile/:token (payload + departmentIds)
-    API-->>PWA: 200 OK (Profile saved & token invalidated)
-    PWA-->>Member: "Profile Saved!" + Fires PWA Install Prompt
+    Note over Member,Dove: FLOW B: Returning Member (PIN Login)
+    Member->>PWA: Enter phone/email + 4-digit PIN on /login
+    PWA->>Dove: POST /profile/login { identifier, pin }
+    Dove-->>PWA: 200 OK { person, accessToken }
+    PWA->>Cookie: Store accessToken (HTTP-only, 30 days)
+    PWA-->>Member: Redirect to /home
+
+    Note over Member,Dove: FLOW C: Session Validation & Sliding Renewal
+    Member->>PWA: Opens app / loads page
+    PWA->>Cookie: Read accessToken
+    PWA->>Dove: GET /profile/me (Bearer accessToken)
+    Dove-->>PWA: 200 OK { person, church, accessToken (renewed) }
+    PWA->>Cookie: Update accessToken (sliding 30-day renewal)
+    PWA-->>Member: Render personalized home view
 ```
 
-### Key Security Features
-- **Public Endpoints**: All `/profile` routes are unauthenticated (`@Public()`). No Bearer JWT headers are required for member onboarding.
-- **Single-Use Tokens**: The link token is single-use and expires after 30 minutes. Once `PATCH /profile/:token` succeeds, the token is destroyed. A link opened before it expires can still be saved for up to 30 minutes after it was first opened, so a half-filled form isn't lost.
-- **Rate limits**: `POST /profile/claim` allows 1 request per email per 60 s and 5 per hour; extra requests get the same generic `200` and no email is sent. There is also a per-IP cap (60 per 10 min) that returns `429`.
-- **Anti-Enumeration**: `POST /profile/claim` always returns HTTP 200 with the same confirmation message regardless of whether the email or phone was previously registered.
-- **Role Isolation**: Selecting `LEADER` or `PASTOR` updates directory categorization only; it does **not** grant system administrative access.
+### Key Security & Session Principles
+
+- **Separation of Staff and Member Auth**:
+  - Staff credentials (`POST /auth/login`) issue JWT tokens with `user` payload and system roles (`SUPER_ADMIN`, `PASTOR`, etc.).
+  - Members authenticate via PIN (`POST /profile/login`) or magic link onboarding (`PATCH /profile/:token`). Member tokens contain `{ sub: personId, churchId, type: 'member', jti }`.
+  - Member tokens are strictly rejected by staff endpoints, and staff tokens cannot access member profile endpoints.
+- **Token Storage**:
+  - The member `accessToken` **must never be exposed to browser JavaScript**.
+  - All calls to Dove are executed server-side via Next.js Server Actions / Route Handlers.
+  - The token is persisted in a secure, `httpOnly`, `sameSite: 'lax'`, `secure: true` cookie.
+- **30-Day Sliding Sessions**:
+  - Access tokens have a 30-day lifetime (`exp: 30 days`).
+  - Calling `GET /profile/me` validates the active session and returns a freshly signed 30-day `accessToken` in the response body.
+  - The Next.js server action updates the HTTP-only cookie with this new token, ensuring active members who visit weekly or monthly stay continuously logged in.
+- **Abuse Protection & Rate Limiting**:
+  - `POST /profile/claim`: Throttled to 1 request per email per 60s, 5 per hour, and 60 requests per 10 minutes per IP.
+  - `POST /profile/login`: Throttled per IP (5 attempts per minute) via NestJS Throttler.
+  - **Account Lockout**: 5 consecutive incorrect PIN attempts trigger a **15-minute account lockout** (`PIN_LOCKED`, HTTP 403).
+- **Single-Use Onboarding Tokens**:
+  - Magic link tokens are single-use and expire 30 minutes after issuance. Once `PATCH /profile/:token` completes, the token is invalidated immediately.
 
 ---
 
-## 2. Screen 1: Secure Link Claim (`/profile`)
+## 2. PIN Validation & Weak-PIN Denylist
 
-The public entry point when someone scans the church QR code or clicks the shared link.
+Both onboarding (`PATCH /profile/:token` with `pin`) and in-app PIN update (`PUT /profile/me/pin` with `newPin`) enforce a strict weak-PIN denylist on Dove:
 
-### Endpoint: `POST /profile/claim`
+### Rules Enforced:
+1. **Length and Digits**: Must be exactly 4 numeric digits (`^\d{4}$`).
+2. **Repetitive Digits**: Disallows identical digits (e.g., `0000`, `1111`, `2222`, ..., `9999`).
+3. **Ascending Runs**: Disallows sequential ascending runs (e.g., `1234`, `2345`, `0123`, `6789`).
+4. **Descending Runs**: Disallows sequential descending runs (e.g., `4321`, `5432`, `9876`, `3210`).
+5. **Common PINs**: Disallows commonly guessed patterns:
+   - `1212`, `1122`, `2580` (keypad vertical column), `0852` (keypad vertical reverse), `1004`, `6969`.
+
+### Error Response (`400 Bad Request`):
+```json
+{
+  "statusCode": 400,
+  "message": "PIN is too weak. Avoid repeated digits, sequential numbers, or common patterns.",
+  "code": "PIN_TOO_WEAK"
+}
+```
+
+> [!TIP]
+> The PWA should validate these rules client-side for immediate user feedback before submitting the form.
+
+---
+
+## 3. Onboarding & Claim Flow
+
+### 3.1 Requesting a Magic Link (`POST /profile/claim`)
+
+Scanned QR codes or visiting `/profile` allow the member to request an onboarding or recovery magic link.
 
 #### Request Body
 ```json
 {
-  "email": "sarah.johnson@example.com",
-  "phone": "+2348012345678",
+  "email": "sarah.adeyemi@example.com",
   "churchSlug": "abwog" // Optional: defaults to primary church if omitted
 }
 ```
-*Note: Request a link with an **email address**. Phone is accepted but only matches someone who already has an email on file; an unknown phone creates nothing. Unknown emails create a new visitor record (`namesConfirmed: false`).*
+*Note: Magic links are sent via **email**. If the email does not exist, a new visitor record is created with `namesConfirmed: false`.*
 
 #### Response (`200 OK`)
 ```json
@@ -64,25 +116,11 @@ The public entry point when someone scans the church QR code or clicks the share
 }
 ```
 
-#### Frontend Implementation Notes
-1. **Form Fields**: Email input (email only; do not offer phone as a way to request a link).
-2. **Success State**: Always transition to a *"Check your inbox"* screen with instructions to click the secure link sent to their email.
-3. **Resend Timer**: Provide a 60-second cooldown timer before allowing the user to click "Resend link". The server enforces the same limit silently, so the countdown is the only feedback.
-4. **429**: Only returned when one IP sends too many requests; show a generic "Too many attempts, try again shortly" message.
-
 ---
 
-## 3. Screen 2: Pre-filled Profile & Departments (`/profile/[token]`)
+### 3.2 Loading the Onboarding Profile Form (`GET /profile/:token`)
 
-When the member clicks the link in their email, they land on `/profile/[token]`.
-
-### Endpoint: `GET /profile/:token`
-
-#### Fetching Data on Mount
-Call `GET /profile/:token` once. The backend provides everything needed for the form in a single request:
-1. The person's existing profile
-2. Their currently assigned departments
-3. The church's complete list of `availableDepartments` for dropdown selection
+When the user clicks the magic link in their email, they navigate to `/profile/[token]`.
 
 #### Response (`200 OK`)
 ```json
@@ -90,14 +128,15 @@ Call `GET /profile/:token` once. The backend provides everything needed for the 
   "person": {
     "id": "6a96bc8e-d98c-4573-9a3b-28f0fb26e031",
     "firstName": "Sarah",
-    "lastName": "Johnson",
+    "lastName": "Adeyemi",
     "namesConfirmed": true,
-    "email": "sarah.johnson@example.com",
+    "email": "sarah.adeyemi@example.com",
     "phone": "+2348012345678",
     "gender": "FEMALE",
     "dateOfBirth": "1996-04-12",
     "address": "14 Olive Garden Street",
     "membershipStatus": "WORKER",
+    "hasPin": false,
     "departments": [
       {
         "id": "dept-choir-uuid",
@@ -127,92 +166,38 @@ Call `GET /profile/:token` once. The backend provides everything needed for the 
       "id": "dept-media-uuid",
       "name": "Media & Tech",
       "description": "Sound engineering, livestreaming, visuals"
-    },
-    {
-      "id": "dept-ushers-uuid",
-      "name": "Ushers & Protocol",
-      "description": "Hospitality and sanctuary management"
-    },
-    {
-      "id": "dept-children-uuid",
-      "name": "Children's Ministry",
-      "description": "Teaching and nurturing church children"
     }
   ]
 }
 ```
 
-#### `namesConfirmed`
-When `false`, the record was created from an email alone and its names are placeholders ("New Visitor"). Leave the name fields **empty** and greet with "Welcome!". `PATCH` then requires both names. When `true`, pre-fill and greet by first name.
-
-#### Token Error Handling
-`GET` and `PATCH /profile/:token` return `400 Bad Request` with a machine-readable `code` (switch on `code`, not `message`):
-
-| `code` | `message` | Screen |
-|---|---|---|
-| `PROFILE_LINK_EXPIRED` | `Magic link has expired. Please request a new one.` | Expired view with a *"Request a new link"* button back to `/profile` |
-| `PROFILE_LINK_INVALID` | `Invalid or expired magic link` | Invalid view (also shown for an already-used link) |
-
-Body shape: `{ "success": false, "statusCode": 400, "message": "...", "code": "PROFILE_LINK_EXPIRED" }`.
+- When `namesConfirmed` is `false`, leave the name fields blank and greet with "Welcome!".
+- When `namesConfirmed` is `true`, pre-fill first and last names.
 
 ---
 
-## 4. Screen 3: Form Rendering & Conditional Logic
+### 3.3 Saving Onboarding Profile & Setting PIN (`PATCH /profile/:token`)
 
-### Form Fields
-1. **First Name & Last Name** (Required text inputs)
-2. **Email Address** (Optional/pre-filled)
-3. **Phone Number** (Optional/pre-filled)
-4. **Gender** (Radio group or Select: `MALE`, `FEMALE`, `OTHER`)
-5. **Date of Birth** (Date picker input: `YYYY-MM-DD`)
-6. **Address** (Textarea or single-line address)
-7. **Membership Status** (Select dropdown):
-   - `VISITOR` — First-time or occasional guest
-   - `MEMBER` — Regular congregation member
-   - `WORKER` — Serves in a church ministry/department
-   - `LEADER` — Department head, cell leader, or elder
-   - `PASTOR` — Ordained minister or pastoral staff
-
-### Dynamic Department Field Behavior
-The department selector should dynamically respond to the selected `membershipStatus`:
-
-| Selected Status | Department Selector Behavior |
-|---|---|
-| **`WORKER`** | **Required/Highlighted**: Show multi-select tags/checkboxes populated from `availableDepartments`. Prompt: *"Which department(s) do you serve in?"* |
-| **`LEADER` / `PASTOR`** | **Optional**: Show department multi-select with helper note: *"Select any operational departments you preside over or serve in (optional)."* |
-| **`VISITOR` / `MEMBER`** | **Hidden or Collapsed**: Typically 0 departments. The server clears any departments sent for these statuses. |
-
-The server enforces the Worker rule: a `WORKER` with no departments gets `400` with `code: "DEPARTMENT_REQUIRED"`. This is only enforced when the church has at least one department.
-
----
-
-## 5. Screen 4: Saving Profile & Invalidation
-
-### Endpoint: `PATCH /profile/:token`
-
-When the user clicks **"Save & Continue"**, send the form data:
+When the member submits their details, they can also provide a 4-digit PIN.
 
 #### Request Body
 ```json
 {
   "firstName": "Sarah",
-  "lastName": "Johnson",
-  "email": "sarah.johnson@example.com",
+  "lastName": "Adeyemi",
+  "email": "sarah.adeyemi@example.com",
   "phone": "+2348012345678",
   "gender": "FEMALE",
   "dateOfBirth": "1996-04-12",
   "address": "14 Olive Garden Street",
   "membershipStatus": "WORKER",
-  "departmentIds": [
-    "dept-choir-uuid",
-    "dept-media-uuid"
-  ]
+  "departmentIds": ["dept-choir-uuid"],
+  "pin": "2846" // 4-digit string
 }
 ```
 
-Other `400` codes on this endpoint: `NAMES_REQUIRED` (names are unconfirmed and `firstName` or `lastName` is missing), plus the two link codes above. Saving sets `namesConfirmed: true`.
-
 #### Response (`200 OK`)
+When `pin` is set (or the user already has a PIN):
 ```json
 {
   "statusCode": 200,
@@ -221,112 +206,408 @@ Other `400` codes on this endpoint: `NAMES_REQUIRED` (names are unconfirmed and 
     "person": {
       "id": "6a96bc8e-d98c-4573-9a3b-28f0fb26e031",
       "firstName": "Sarah",
-      "lastName": "Johnson",
+      "lastName": "Adeyemi",
       "membershipStatus": "WORKER",
+      "hasPin": true,
       "departments": [
-        { "id": "dept-choir-uuid", "name": "Choir" },
-        { "id": "dept-media-uuid", "name": "Media & Tech" }
+        { "id": "dept-choir-uuid", "name": "Choir" }
       ]
-    }
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
   }
 }
 ```
 
 > [!IMPORTANT]
-> The backend automatically invalidates the token upon receiving a successful `PATCH`. Attempting to call the endpoint again with the same token will fail with a 400 error.
+> If a PIN was configured or existed on the profile, `accessToken` is returned next to `person`. The PWA server action should immediately write this token to the session cookie so the member is signed in without needing to log in again. If no PIN is configured, `accessToken` is omitted.
 
 ---
 
-## 6. Screen 5: PWA Installation Prompt (The On-Ramp)
+## 4. Returning Member PIN Login (`POST /profile/login`)
 
-Never prompt users to install the PWA on their first visit. The highest install conversion occurs **immediately after the member successfully saves their profile**.
+Returning members sign in with their phone number or email and 4-digit PIN.
 
-### Capturing the Install Event (React / Next.js Hook)
+### Endpoint Specifications
+- **Method**: `POST`
+- **Path**: `/profile/login`
+- **Auth**: Public (`@Public()`)
+- **Rate Limit**: 5 requests / 60 seconds per IP
+
+### Identifier Normalization
+Dove automatically normalizes Nigerian phone numbers:
+- Domestic format: `08031234567` or `08012345678`
+- E.164 international format: `+2348031234567` or `+2348012345678`
+- Both formats match the same underlying person record.
+
+### Request Body
+```json
+{
+  "identifier": "08012345678", // or "+2348012345678" or "sarah.adeyemi@example.com"
+  "pin": "2846"
+}
+```
+
+### Success Response (`200 OK`)
+```json
+{
+  "statusCode": 200,
+  "data": {
+    "person": {
+      "id": "6a96bc8e-d98c-4573-9a3b-28f0fb26e031",
+      "firstName": "Sarah",
+      "lastName": "Adeyemi",
+      "membershipStatus": "WORKER",
+      "hasPin": true,
+      "departments": [
+        { "id": "dept-choir-uuid", "name": "Choir" }
+      ]
+    },
+    "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  }
+}
+```
+
+### Error Responses & Shapes
+
+Dove uses an exception filter that surfaces custom error attributes (`code`, `attemptsRemaining`, `lockedUntil`) at the **top level** of the JSON response body. For maximum resilience, the PWA can safely read `res.attemptsRemaining ?? res.data?.attemptsRemaining`.
+
+#### 1. Account Not Found (`401 Unauthorized`)
+```json
+{
+  "statusCode": 401,
+  "message": "No account found matching this identifier",
+  "code": "INVALID_CREDENTIALS"
+}
+```
+
+#### 2. No PIN Configured (`401 Unauthorized`)
+Member exists in church records but has never set a PIN.
+```json
+{
+  "statusCode": 401,
+  "message": "No PIN set. Please claim your profile link via email to set your PIN.",
+  "code": "NO_PIN_SET"
+}
+```
+*Frontend action: Prompt the user to request a magic link at `/profile`.*
+
+#### 3. Incorrect PIN (`401 Unauthorized`)
+Returns `attemptsRemaining` (out of 5).
+```json
+{
+  "statusCode": 401,
+  "message": "Invalid PIN. 3 attempts remaining.",
+  "code": "INVALID_PIN",
+  "attemptsRemaining": 3
+}
+```
+
+#### 4. Account Locked (`403 Forbidden`)
+Triggered on the 5th incorrect attempt or when attempting login during a lockout. Returns `lockedUntil` as an ISO timestamp (15-minute lock).
+```json
+{
+  "statusCode": 403,
+  "message": "Account is temporarily locked due to too many failed attempts. Try again after 2026-11-06T00:45:00.000Z.",
+  "code": "PIN_LOCKED",
+  "lockedUntil": "2026-11-06T00:45:00.000Z"
+}
+```
+*Frontend action: Disable submit button and show a countdown until `lockedUntil`.*
+
+---
+
+## 5. Session Validation & Sliding Refresh (`GET /profile/me`)
+
+The PWA invokes this endpoint on home-page load or in the root server layout to validate the member session and renew the sliding cookie.
+
+### Endpoint Specifications
+- **Method**: `GET`
+- **Path**: `/profile/me`
+- **Headers**: `Authorization: Bearer <accessToken>`
+
+### Response (`200 OK`)
+```json
+{
+  "person": {
+    "id": "6a96bc8e-d98c-4573-9a3b-28f0fb26e031",
+    "firstName": "Sarah",
+    "lastName": "Adeyemi",
+    "email": "sarah.adeyemi@example.com",
+    "phone": "+2348012345678",
+    "gender": "FEMALE",
+    "dateOfBirth": "1996-04-12",
+    "address": "14 Olive Garden Street",
+    "membershipStatus": "WORKER",
+    "hasPin": true,
+    "departments": [
+      {
+        "id": "dept-choir-uuid",
+        "name": "Choir",
+        "role": "Member"
+      }
+    ]
+  },
+  "church": {
+    "id": "church-uuid",
+    "name": "Abiding Word Of Grace Missions",
+    "shortName": "Amazing Grace",
+    "slug": "abwog",
+    "whatsappNumber": "+2348012345678",
+    "email": "contact@abwog.org",
+    "phone": "+2348000000000"
+  },
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." // Refreshed sliding token (30 days)
+}
+```
+
+### Sliding Session Behavior
+1. Every successful `GET /profile/me` call issues a fresh 30-day `accessToken` in the response body.
+2. The PWA Next.js server action should write this updated `accessToken` into the HTTP-only cookie.
+3. If the token is missing, expired, or revoked, Dove returns `401 Unauthorized`. The PWA clears the cookie and redirects to `/login`.
+
+---
+
+## 6. Setting or Changing PIN (`PUT /profile/me/pin`)
+
+Allows an authenticated member to set a PIN for the first time or update their existing PIN without requesting a magic link.
+
+### Endpoint Specifications
+- **Method**: `PUT`
+- **Path**: `/profile/me/pin`
+- **Headers**: `Authorization: Bearer <accessToken>`
+
+### Request Body
+```json
+{
+  "currentPin": "2846", // Required if person.hasPin is true; optional if hasPin is false
+  "newPin": "8137"      // 4 numeric digits, checked against weak PIN denylist
+}
+```
+
+### Response (`200 OK`)
+```json
+{
+  "statusCode": 200,
+  "message": "PIN updated successfully"
+}
+```
+
+### Error Conditions
+- **Missing `currentPin` when PIN is set (`400 Bad Request`)**:
+  ```json
+  {
+    "statusCode": 400,
+    "message": "Current PIN is required to change your PIN",
+    "code": "CURRENT_PIN_REQUIRED"
+  }
+  ```
+- **Incorrect `currentPin` (`401 Unauthorized`)**:
+  Counts toward the 5-attempt lockout.
+  ```json
+  {
+    "statusCode": 401,
+    "message": "Invalid current PIN. 2 attempts remaining.",
+    "code": "INVALID_PIN",
+    "attemptsRemaining": 2
+  }
+  ```
+- **Account Locked (`403 Forbidden`)**:
+  ```json
+  {
+    "statusCode": 403,
+    "message": "Account is temporarily locked due to too many failed attempts. Try again after ...",
+    "code": "PIN_LOCKED",
+    "lockedUntil": "2026-11-06T00:50:00.000Z"
+  }
+  ```
+- **Weak New PIN (`400 Bad Request`)**:
+  ```json
+  {
+    "statusCode": 400,
+    "message": "PIN is too weak. Avoid repeated digits, sequential numbers, or common patterns.",
+    "code": "PIN_TOO_WEAK"
+  }
+  ```
+
+---
+
+## 7. Session Revocation / Logout (`POST /profile/logout`)
+
+Revokes the member's active session token server-side.
+
+### Endpoint Specifications
+- **Method**: `POST`
+- **Path**: `/profile/logout`
+- **Headers**: `Authorization: Bearer <accessToken>`
+
+### Response (`200 OK`)
+```json
+{
+  "statusCode": 200,
+  "message": "Logged out successfully"
+}
+```
+
+### Post-Logout Action
+The Next.js server action should delete the session cookie and redirect the user to `/login`.
+
+---
+
+## 8. Next.js Server Action Reference Implementation
+
+The following example demonstrates managing the HTTP-only member session in Next.js (App Router):
 
 ```typescript
-// usePwaInstall.ts
-import { useState, useEffect } from 'react';
+// app/actions/auth.ts
+'use server';
 
-interface BeforeInstallPromptEvent extends Event {
-  prompt: () => Promise<void>;
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+import { cookies } from 'next/headers';
+import { redirect } from 'next/navigation';
+
+const DOVE_API_URL = process.env.DOVE_API_URL || 'http://localhost:3000';
+const COOKIE_NAME = 'dove_member_session';
+const COOKIE_MAX_AGE = 30 * 24 * 60 * 60; // 30 days in seconds
+
+/**
+ * Helper to get the auth cookie
+ */
+async function getSessionToken(): Promise<string | undefined> {
+  const cookieStore = await cookies();
+  return cookieStore.get(COOKIE_NAME)?.value;
 }
 
-export function usePwaInstall() {
-  const [promptEvent, setPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
+/**
+ * Helper to set or update the sliding auth cookie
+ */
+async function setSessionCookie(token: string) {
+  const cookieStore = await cookies();
+  cookieStore.set(COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: COOKIE_MAX_AGE,
+  });
+}
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setPromptEvent(e as BeforeInstallPromptEvent);
-      setIsInstallable(true);
+/**
+ * 1. PIN Login Action
+ */
+export async function loginWithPin(identifier: string, pin: string) {
+  const res = await fetch(`${DOVE_API_URL}/profile/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ identifier, pin }),
+  });
+
+  const body = await res.json();
+
+  if (!res.ok) {
+    return {
+      success: false,
+      code: body.code || 'UNKNOWN_ERROR',
+      message: body.message,
+      attemptsRemaining: body.attemptsRemaining ?? body.data?.attemptsRemaining,
+      lockedUntil: body.lockedUntil ?? body.data?.lockedUntil,
     };
+  }
 
-    window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
-  }, []);
+  const { person, accessToken } = body.data || body;
+  await setSessionCookie(accessToken);
 
-  const triggerInstall = async () => {
-    if (!promptEvent) return false;
-    await promptEvent.prompt();
-    const choice = await promptEvent.userChoice;
-    setPromptEvent(null);
-    setIsInstallable(false);
-    return choice.outcome === 'accepted';
-  };
-
-  return { isInstallable, triggerInstall };
+  return { success: true, person };
 }
-```
 
-### Success Screen Component
+/**
+ * 2. Validate Session on App Load (with Sliding Renewal)
+ */
+export async function validateSession() {
+  const token = await getSessionToken();
+  if (!token) return null;
 
-```tsx
-// ProfileSuccessView.tsx
-export function ProfileSuccessView({ churchName, onInstallClick, isInstallable }: Props) {
-  return (
-    <div className="max-w-md mx-auto text-center p-6 space-y-6">
-      <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl">
-        ✓
-      </div>
+  try {
+    const res = await fetch(`${DOVE_API_URL}/profile/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      cache: 'no-store',
+    });
 
-      <h1 className="text-2xl font-bold">Profile Saved!</h1>
-      <p className="text-gray-600">
-        Thank you for keeping your details updated with {churchName}.
-      </p>
+    if (!res.ok) {
+      await logoutMember();
+      return null;
+    }
 
-      {/* PWA Install Card */}
-      <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 text-left space-y-3">
-        <h3 className="font-semibold text-blue-900">Stay Connected</h3>
-        <p className="text-sm text-blue-700">
-          Install the Dove Church app to your home screen for church updates, devotionals, and events.
-        </p>
+    const data = await res.json();
+    const result = data.data || data;
 
-        {isInstallable ? (
-          <button
-            onClick={onInstallClick}
-            className="w-full bg-blue-600 text-white font-medium py-2.5 px-4 rounded-lg hover:bg-blue-700 transition"
-          >
-            Install Dove App
-          </button>
-        ) : (
-          <p className="text-xs text-gray-500 italic">
-            Tip on iOS: Tap the <strong>Share</strong> button below and select <strong>Add to Home Screen</strong>.
-          </p>
-        )}
-      </div>
-    </div>
-  );
+    // Slide the session if renewed token is returned
+    if (result.accessToken) {
+      await setSessionCookie(result.accessToken);
+    }
+
+    return { person: result.person, church: result.church };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 3. Change PIN Action
+ */
+export async function changePin(currentPin: string | undefined, newPin: string) {
+  const token = await getSessionToken();
+  if (!token) return { success: false, code: 'UNAUTHORIZED' };
+
+  const res = await fetch(`${DOVE_API_URL}/profile/me/pin`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ currentPin, newPin }),
+  });
+
+  const body = await res.json();
+  if (!res.ok) {
+    return {
+      success: false,
+      code: body.code,
+      message: body.message,
+      attemptsRemaining: body.attemptsRemaining,
+      lockedUntil: body.lockedUntil,
+    };
+  }
+
+  return { success: true, message: body.message };
+}
+
+/**
+ * 4. Logout Action
+ */
+export async function logoutMember() {
+  const token = await getSessionToken();
+  if (token) {
+    try {
+      await fetch(`${DOVE_API_URL}/profile/logout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+    } catch {
+      // Continue clearing cookie even if backend call fails
+    }
+  }
+
+  const cookieStore = await cookies();
+  cookieStore.delete(COOKIE_NAME);
+  redirect('/login');
 }
 ```
 
 ---
 
-## 7. TypeScript Type Definitions
+## 9. TypeScript Types & Error Codes
 
 ```typescript
-// types/profile.ts
+// types/member-session.ts
 
 export type Gender = 'MALE' | 'FEMALE' | 'OTHER';
 
@@ -337,7 +618,7 @@ export type MembershipStatus =
   | 'LEADER'
   | 'PASTOR';
 
-export interface DepartmentInfo {
+export interface DepartmentSummary {
   id: string;
   name: string;
   description?: string | null;
@@ -345,7 +626,7 @@ export interface DepartmentInfo {
   joinedAt?: string;
 }
 
-export interface PersonProfile {
+export interface MemberPerson {
   id: string;
   firstName: string;
   lastName: string;
@@ -353,47 +634,67 @@ export interface PersonProfile {
   email: string | null;
   phone: string | null;
   gender: Gender | null;
-  dateOfBirth: string | null; // "YYYY-MM-DD"
+  dateOfBirth: string | null;
   address: string | null;
   membershipStatus: MembershipStatus;
-  departments: DepartmentInfo[];
+  hasPin: boolean;
+  departments: DepartmentSummary[];
 }
 
-export interface ChurchInfo {
+export interface ChurchSummary {
   id: string;
   name: string;
   shortName?: string | null;
-  whatsappNumber?: string | null; // E.164, e.g. "+2348012345678"
   slug: string;
+  whatsappNumber?: string | null;
   email?: string | null;
   phone?: string | null;
-  branchName?: string | null;
-  campusName?: string | null;
 }
 
-export interface ProfileBootstrapResponse {
-  person: PersonProfile;
-  church: ChurchInfo;
-  availableDepartments: DepartmentInfo[];
+export interface MemberSessionData {
+  person: MemberPerson;
+  church: ChurchSummary;
+  accessToken: string;
 }
 
-export interface UpdateProfilePayload {
-  firstName?: string;
-  lastName?: string;
-  email?: string;
-  phone?: string;
-  gender?: Gender;
-  dateOfBirth?: string;
-  address?: string;
-  membershipStatus?: MembershipStatus;
-  departmentIds?: string[];
-}
-```
-
-```typescript
 export type ProfileErrorCode =
   | 'PROFILE_LINK_EXPIRED'
   | 'PROFILE_LINK_INVALID'
   | 'NAMES_REQUIRED'
-  | 'DEPARTMENT_REQUIRED';
+  | 'DEPARTMENT_REQUIRED'
+  | 'PIN_TOO_WEAK'
+  | 'INVALID_CREDENTIALS'
+  | 'NO_PIN_SET'
+  | 'INVALID_PIN'
+  | 'PIN_LOCKED'
+  | 'CURRENT_PIN_REQUIRED';
+
+export interface ApiErrorResponse {
+  statusCode: number;
+  message: string;
+  code: ProfileErrorCode;
+  attemptsRemaining?: number;
+  lockedUntil?: string;
+}
 ```
+
+---
+
+## 10. Summary Checklist for Frontend Implementation
+
+- [ ] **Onboarding Form (`PATCH /profile/:token`)**:
+  - Add optional 4-digit PIN input with client-side strength checks.
+  - Read `accessToken` from response and store it into the HTTP-only cookie.
+- [ ] **Returning Member Login (`POST /profile/login`)**:
+  - Allow entering phone (`0803...` or `+234803...`) or email.
+  - Handle `NO_PIN_SET` by guiding the user to request a magic link.
+  - Handle `INVALID_PIN` and display `attemptsRemaining`.
+  - Handle `PIN_LOCKED` and display countdown timer using `lockedUntil`.
+- [ ] **Home / Root Layout (`GET /profile/me`)**:
+  - Send Bearer token from HTTP-only cookie.
+  - Update session cookie with renewed `accessToken` from the response (sliding session).
+- [ ] **Settings / Security (`PUT /profile/me/pin`)**:
+  - Require `currentPin` if `person.hasPin` is true.
+  - Display `attemptsRemaining` or `lockedUntil` on errors.
+- [ ] **Sign Out (`POST /profile/logout`)**:
+  - Call revocation endpoint and delete cookie.

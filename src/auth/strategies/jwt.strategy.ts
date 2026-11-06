@@ -10,6 +10,8 @@ export interface JwtPayload {
   email: string;
   roles: string[];
   churchId: string;
+  type?: string;
+  aud?: string;
 }
 
 @Injectable()
@@ -33,7 +35,13 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
   }
 
   validate(payload: JwtPayload): ActiveUserData {
-    if (!payload.sub || !payload.email || !payload.churchId) {
+    if (
+      !payload.sub ||
+      !payload.email ||
+      !payload.churchId ||
+      payload.type === 'MEMBER' ||
+      payload.aud === 'dove:member'
+    ) {
       throw new UnauthorizedException('Invalid token payload');
     }
 
