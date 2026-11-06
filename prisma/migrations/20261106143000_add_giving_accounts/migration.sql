@@ -1,4 +1,4 @@
-1-- CreateTable
+-- CreateTable
 CREATE TABLE `giving_accounts` (
     `id` VARCHAR(191) NOT NULL,
     `church_id` VARCHAR(191) NOT NULL,
