@@ -118,6 +118,7 @@ model Church {
   outreachMessages   OutreachMessage[]
   givingAccounts     GivingAccount[]
   confessions        Confession[]
+  scriptures         Scripture[]
 
   @@map("churches")
 }
@@ -667,4 +668,36 @@ model ConfessionAudio {
   @@unique([confessionId, voice])
   @@map("confession_audio")
 }
+
+enum ScriptureKind {
+  WEEK
+  YEAR
+}
+
+enum ScriptureStatus {
+  DRAFT
+  PUBLISHED
+}
+
+model Scripture {
+  id          String          @id @default(uuid())
+  churchId    String          @map("church_id")
+  kind        ScriptureKind
+  text        String          @db.VarChar(1500)
+  reference   String          @db.VarChar(100)
+  translation String?         @db.VarChar(20)
+  givenBy     String?         @map("given_by") @db.VarChar(100)
+  startsOn    DateTime        @map("starts_on") @db.Date
+  status      ScriptureStatus @default(DRAFT)
+  createdById String?         @map("created_by_id")
+  updatedById String?         @map("updated_by_id")
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
+
+  @@index([churchId, kind, status, startsOn])
+  @@map("scriptures")
+}
+
 

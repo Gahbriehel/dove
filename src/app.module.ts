@@ -31,6 +31,7 @@ import { MessageTemplatesModule } from './message-templates/message-templates.mo
 import { OutreachModule } from './outreach/outreach.module';
 import { GivingAccountsModule } from './giving-accounts/giving-accounts.module';
 import { ConfessionsModule } from './confessions/confessions.module';
+import { ScripturesModule } from './scriptures/scriptures.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -89,6 +90,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     OutreachModule,
     GivingAccountsModule,
     ConfessionsModule,
+    ScripturesModule,
   ],
   controllers: [],
   providers: [
