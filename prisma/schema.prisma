@@ -117,6 +117,7 @@ model Church {
   messageTemplates   MessageTemplate[]
   outreachMessages   OutreachMessage[]
   givingAccounts     GivingAccount[]
+  confessions        Confession[]
 
   @@map("churches")
 }
@@ -614,3 +615,56 @@ model OutreachMessage {
   @@index([purpose, status])
   @@map("outreach_messages")
 }
+
+enum ConfessionStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum ConfessionVoice {
+  FEMALE
+  MALE
+}
+
+model Confession {
+  id           String           @id @default(uuid())
+  churchId     String           @map("church_id")
+  title        String           @db.VarChar(150)
+  slug         String           @db.VarChar(160)
+  body         String           @db.Text
+  scriptureRef String?          @map("scripture_ref") @db.VarChar(100)
+  category     String?          @db.VarChar(50)
+  status       ConfessionStatus @default(DRAFT)
+  sortOrder    Int              @default(0) @map("sort_order")
+  publishedAt  DateTime?        @map("published_at")
+  listenCount  Int              @default(0) @map("listen_count")
+  createdById  String?          @map("created_by_id")
+  updatedById  String?          @map("updated_by_id")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  updatedAt    DateTime         @updatedAt @map("updated_at")
+
+  church Church            @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  audio  ConfessionAudio[]
+
+  @@unique([churchId, slug])
+  @@index([churchId, status, sortOrder])
+  @@map("confessions")
+}
+
+model ConfessionAudio {
+  id           String          @id @default(uuid())
+  confessionId String          @map("confession_id")
+  voice        ConfessionVoice
+  url          String          @db.VarChar(512)
+  durationSec  Int             @map("duration_sec")
+  sizeBytes    Int             @map("size_bytes")
+  textHash     String          @map("text_hash") @db.VarChar(64)
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  confession Confession @relation(fields: [confessionId], references: [id], onDelete: Cascade)
+
+  @@unique([confessionId, voice])
+  @@map("confession_audio")
+}
+

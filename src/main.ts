@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { join } from 'path';
 import { AppModule } from './app.module';
@@ -21,6 +22,14 @@ async function bootstrap() {
   // Static Assets (uploads)
   app.useStaticAssets(join(process.cwd(), 'public'), {
     prefix: '/public/',
+    setHeaders: (res: Response, filePath: string) => {
+      if (
+        filePath.includes('/confession-audio/') ||
+        filePath.includes('\\confession-audio\\')
+      ) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      }
+    },
   });
 
   // Global API Prefix
