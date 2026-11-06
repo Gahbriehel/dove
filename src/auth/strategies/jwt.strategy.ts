@@ -39,7 +39,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       !payload.sub ||
       !payload.email ||
       !payload.churchId ||
-      payload.type === 'MEMBER' ||
+      payload.type?.toUpperCase() === 'MEMBER' ||
       payload.aud === 'dove:member'
     ) {
       throw new UnauthorizedException('Invalid token payload');

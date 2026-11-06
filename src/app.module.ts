@@ -29,6 +29,7 @@ import { ProfileModule } from './profile/profile.module';
 import { CheckInsModule } from './check-ins/check-ins.module';
 import { MessageTemplatesModule } from './message-templates/message-templates.module';
 import { OutreachModule } from './outreach/outreach.module';
+import { GivingAccountsModule } from './giving-accounts/giving-accounts.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { RolesGuard } from './common/guards/roles.guard';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter';
@@ -85,6 +86,7 @@ import { TransformInterceptor } from './common/interceptors/transform.intercepto
     CheckInsModule,
     MessageTemplatesModule,
     OutreachModule,
+    GivingAccountsModule,
   ],
   controllers: [],
   providers: [

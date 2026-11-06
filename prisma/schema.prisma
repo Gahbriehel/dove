@@ -116,6 +116,7 @@ model Church {
   pastoralCheckIns   PastoralCheckIn[]
   messageTemplates   MessageTemplate[]
   outreachMessages   OutreachMessage[]
+  givingAccounts     GivingAccount[]
 
   @@map("churches")
 }
@@ -545,6 +546,44 @@ model MessageTemplate {
 
 // WhatsApp outreach sent by staff via click-to-chat. EmailSendLog stays the
 // source of truth for email because it is keyed by Resend's id for bounces.
+enum GivingCurrency {
+  NGN
+  USD
+  GBP
+  EUR
+}
+
+enum GivingPurpose {
+  TITHE
+  OFFERING
+  BUILDING
+  MISSIONS
+  SEED
+  SPECIAL
+}
+
+model GivingAccount {
+  id            String         @id @default(uuid())
+  churchId      String         @map("church_id")
+  label         String         @db.VarChar(100)
+  bankName      String         @map("bank_name") @db.VarChar(100)
+  accountName   String         @map("account_name") @db.VarChar(255)
+  accountNumber String         @map("account_number") @db.VarChar(34)
+  currency      GivingCurrency @default(NGN)
+  note          String?        @db.VarChar(500)
+  purposes      Json
+  sortOrder     Int            @default(0) @map("sort_order")
+  isActive      Boolean        @default(true) @map("is_active")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  updatedById   String?        @map("updated_by_id")
+
+  church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
+
+  @@index([churchId, isActive, sortOrder])
+  @@map("giving_accounts")
+}
+
 model OutreachMessage {
   id           String          @id @default(uuid())
   churchId     String          @map("church_id")

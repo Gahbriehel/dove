@@ -143,6 +143,30 @@ async function main() {
     console.log('Message templates already exist, skipping defaults');
   }
 
+  // 5. Seed default Giving Account (if none exist)
+  const existingGivingAccounts = await prisma.givingAccount.count({
+    where: { churchId: defaultChurch.id },
+  });
+  if (existingGivingAccounts === 0) {
+    await prisma.givingAccount.create({
+      data: {
+        churchId: defaultChurch.id,
+        label: 'Tithes & Offerings',
+        bankName: 'GTBank',
+        accountName: 'Abiding Word Of Grace Missions',
+        accountNumber: '0123456789',
+        currency: 'NGN',
+        note: 'Use your name and the purpose as the transfer narration.',
+        purposes: ['TITHE', 'OFFERING', 'BUILDING', 'SEED'],
+        sortOrder: 0,
+        isActive: true,
+      },
+    });
+    console.log('Seeded default giving account');
+  } else {
+    console.log('Giving accounts already exist, skipping default account');
+  }
+
   console.log('Seeding complete.');
 }
 
