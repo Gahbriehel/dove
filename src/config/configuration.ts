@@ -22,4 +22,11 @@ export default () => ({
     email: process.env.SUPER_ADMIN_EMAIL || 'superadmin@church.org',
     password: process.env.SUPER_ADMIN_PASSWORD || 'SuperAdmin123!',
   },
+  push: {
+    vapidPublicKey: process.env.VAPID_PUBLIC_KEY,
+    vapidPrivateKey: process.env.VAPID_PRIVATE_KEY,
+    vapidSubject: process.env.VAPID_SUBJECT || 'mailto:info@abwog.org',
+    cronSecret: process.env.CRON_SECRET,
+    timezone: process.env.PUSH_TIMEZONE || 'Africa/Lagos',
+  },
 });

@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ScriptureKind, ScriptureStatus } from '@prisma/client';
 import { Transform } from 'class-transformer';
 import {
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -107,4 +108,12 @@ export class CreateScriptureDto {
   @IsOptional()
   @IsEnum(ScriptureStatus)
   status?: ScriptureStatus = ScriptureStatus.DRAFT;
+
+  @ApiPropertyOptional({
+    description: 'Notify members when scripture starts',
+    default: true,
+  })
+  @IsOptional()
+  @IsBoolean()
+  notifyMembers?: boolean = true;
 }

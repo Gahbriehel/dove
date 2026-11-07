@@ -172,6 +172,8 @@ export class ScripturesService {
       givenBy: item.givenBy ?? null,
       startsOn: formatDateOnly(item.startsOn),
       status: item.status,
+      notifyMembers: item.notifyMembers,
+      notifiedAt: item.notifiedAt,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
       isCurrent: currentIds.has(item.id),
@@ -223,6 +225,7 @@ export class ScripturesService {
         givenBy: dto.givenBy ?? null,
         startsOn: startsOnDate,
         status,
+        notifyMembers: dto.notifyMembers ?? true,
         createdById: user.sub,
         updatedById: user.sub,
       },
@@ -237,6 +240,8 @@ export class ScripturesService {
       givenBy: created.givenBy ?? null,
       startsOn: formatDateOnly(created.startsOn),
       status: created.status,
+      notifyMembers: created.notifyMembers,
+      notifiedAt: created.notifiedAt,
       createdAt: created.createdAt,
       updatedAt: created.updatedAt,
     };
@@ -278,6 +283,7 @@ export class ScripturesService {
     if (dto.givenBy !== undefined) data.givenBy = dto.givenBy ?? null;
     if (dto.startsOn !== undefined) data.startsOn = parseDateOnly(dto.startsOn);
     if (dto.status !== undefined) data.status = dto.status;
+    if (dto.notifyMembers !== undefined) data.notifyMembers = dto.notifyMembers;
 
     const updated = await this.prisma.scripture.update({
       where: { id },
@@ -293,6 +299,8 @@ export class ScripturesService {
       givenBy: updated.givenBy ?? null,
       startsOn: formatDateOnly(updated.startsOn),
       status: updated.status,
+      notifyMembers: updated.notifyMembers,
+      notifiedAt: updated.notifiedAt,
       createdAt: updated.createdAt,
       updatedAt: updated.updatedAt,
     };

@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+/* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-call, @typescript-eslint/no-unsafe-return */
 import {
   BadRequestException,
   ConflictException,
@@ -30,6 +30,11 @@ describe('ConfessionsService', () => {
       upsert: jest.Mock;
       delete: jest.Mock;
     };
+    confessionReminder: {
+      findMany: jest.Mock;
+      deleteMany: jest.Mock;
+      create: jest.Mock;
+    };
     $transaction: jest.Mock;
   };
 
@@ -57,6 +62,11 @@ describe('ConfessionsService', () => {
         findUnique: jest.fn(),
         upsert: jest.fn(),
         delete: jest.fn(),
+      },
+      confessionReminder: {
+        findMany: jest.fn(),
+        deleteMany: jest.fn(),
+        create: jest.fn(),
       },
       $transaction: jest.fn((promises) => Promise.all(promises)),
     };
@@ -618,6 +628,93 @@ describe('ConfessionsService', () => {
       await expect(service.recordListen('c-other')).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('Confession Reminders', () => {
+    it('returns formatted reminders list for valid confession', async () => {
+      prismaMock.confession.findUnique.mockResolvedValueOnce({
+        id: 'c-1',
+        churchId: 'church-1',
+      });
+      prismaMock.confessionReminder.findMany.mockResolvedValueOnce([
+        {
+          id: 'rem-1',
+          confessionId: 'c-1',
+          timeOfDay: '06:30',
+          daysOfWeek: [1, 2, 3],
+          startsOn: new Date('2026-11-01T00:00:00.000Z'),
+          endsOn: null,
+          message: 'Declare your blessings',
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.getReminders('c-1', adminUser);
+      expect(result).toHaveLength(1);
+      expect(result[0].timeOfDay).toBe('06:30');
+      expect(result[0].startsOn).toBe('2026-11-01');
+      expect(result[0].endsOn).toBeNull();
+    });
+
+    it('throws NotFoundException for confession not found or different church', async () => {
+      prismaMock.confession.findUnique.mockResolvedValueOnce(null);
+
+      await expect(
+        service.getReminders('c-unknown', adminUser),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('replaces reminders in transaction on updateReminders', async () => {
+      prismaMock.confession.findUnique.mockResolvedValue({
+        id: 'c-1',
+        churchId: 'church-1',
+      });
+      prismaMock.$transaction.mockImplementation(async (callback) => {
+        if (typeof callback === 'function') {
+          return callback(prismaMock);
+        }
+        return Promise.all(callback);
+      });
+      prismaMock.confessionReminder.deleteMany.mockResolvedValueOnce({
+        count: 1,
+      });
+      prismaMock.confessionReminder.create.mockResolvedValueOnce({});
+      prismaMock.confessionReminder.findMany.mockResolvedValueOnce([
+        {
+          id: 'rem-new',
+          confessionId: 'c-1',
+          timeOfDay: '07:00',
+          daysOfWeek: [],
+          startsOn: null,
+          endsOn: null,
+          message: null,
+          createdAt: new Date(),
+        },
+      ]);
+
+      const result = await service.updateReminders(
+        'c-1',
+        {
+          reminders: [
+            {
+              timeOfDay: '07:00',
+              daysOfWeek: [],
+              startsOn: null,
+              endsOn: null,
+              message: null,
+            },
+          ],
+        },
+        adminUser,
+      );
+
+      expect(prismaMock.confessionReminder.deleteMany).toHaveBeenCalledWith({
+        where: { confessionId: 'c-1' },
+      });
+      expect(prismaMock.confessionReminder.create).toHaveBeenCalled();
+      expect(result).toHaveLength(1);
+      expect(result[0].timeOfDay).toBe('07:00');
     });
   });
 });

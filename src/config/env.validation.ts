@@ -71,6 +71,26 @@ export class EnvironmentVariables {
   @IsString()
   @IsOptional()
   EMAIL_FROM?: string;
+
+  @IsString()
+  @IsOptional()
+  VAPID_PUBLIC_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  VAPID_PRIVATE_KEY?: string;
+
+  @IsString()
+  @IsOptional()
+  VAPID_SUBJECT: string = 'mailto:info@abwog.org';
+
+  @IsString()
+  @IsOptional()
+  CRON_SECRET?: string;
+
+  @IsString()
+  @IsOptional()
+  PUSH_TIMEZONE: string = 'Africa/Lagos';
 }
 
 export function validate(config: Record<string, unknown>) {

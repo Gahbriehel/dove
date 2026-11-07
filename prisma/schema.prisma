@@ -107,18 +107,22 @@ model Church {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  users              User[]
-  people             Person[]
-  events             Event[]
-  departments        Department[]
-  contactSubmissions ContactSubmission[]
-  birthdayGreetings  BirthdayGreeting[]
-  pastoralCheckIns   PastoralCheckIn[]
-  messageTemplates   MessageTemplate[]
-  outreachMessages   OutreachMessage[]
-  givingAccounts     GivingAccount[]
-  confessions        Confession[]
-  scriptures         Scripture[]
+  users                 User[]
+  people                Person[]
+  events                Event[]
+  departments           Department[]
+  contactSubmissions    ContactSubmission[]
+  birthdayGreetings     BirthdayGreeting[]
+  pastoralCheckIns      PastoralCheckIn[]
+  messageTemplates      MessageTemplate[]
+  outreachMessages      OutreachMessage[]
+  givingAccounts        GivingAccount[]
+  confessions           Confession[]
+  scriptures            Scripture[]
+  pushSubscriptions     PushSubscription[]
+  nightPrayer           NightPrayer?
+  encouragementMessages EncouragementMessage[]
+  notificationSettings  NotificationSettings?
 
   @@map("churches")
 }
@@ -234,6 +238,7 @@ model Person {
   departmentMemberships DepartmentMembership[]
   pastoralCheckIns      PastoralCheckIn[]
   outreachMessages      OutreachMessage[]
+  pushSubscriptions     PushSubscription[]
 
   @@index([churchId])
   @@index([email])
@@ -644,8 +649,9 @@ model Confession {
   createdAt    DateTime         @default(now()) @map("created_at")
   updatedAt    DateTime         @updatedAt @map("updated_at")
 
-  church Church            @relation(fields: [churchId], references: [id], onDelete: Cascade)
-  audio  ConfessionAudio[]
+  church    Church               @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  audio     ConfessionAudio[]
+  reminders ConfessionReminder[]
 
   @@unique([churchId, slug])
   @@index([churchId, status, sortOrder])
@@ -680,19 +686,21 @@ enum ScriptureStatus {
 }
 
 model Scripture {
-  id          String          @id @default(uuid())
-  churchId    String          @map("church_id")
-  kind        ScriptureKind
-  text        String          @db.VarChar(1500)
-  reference   String          @db.VarChar(100)
-  translation String?         @db.VarChar(20)
-  givenBy     String?         @map("given_by") @db.VarChar(100)
-  startsOn    DateTime        @map("starts_on") @db.Date
-  status      ScriptureStatus @default(DRAFT)
-  createdById String?         @map("created_by_id")
-  updatedById String?         @map("updated_by_id")
-  createdAt   DateTime        @default(now()) @map("created_at")
-  updatedAt   DateTime        @updatedAt @map("updated_at")
+  id            String          @id @default(uuid())
+  churchId      String          @map("church_id")
+  kind          ScriptureKind
+  text          String          @db.VarChar(1500)
+  reference     String          @db.VarChar(100)
+  translation   String?         @db.VarChar(20)
+  givenBy       String?         @map("given_by") @db.VarChar(100)
+  startsOn      DateTime        @map("starts_on") @db.Date
+  status        ScriptureStatus @default(DRAFT)
+  notifyMembers Boolean         @default(true) @map("notify_members")
+  notifiedAt    DateTime?       @map("notified_at")
+  createdById   String?         @map("created_by_id")
+  updatedById   String?         @map("updated_by_id")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
 
   church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
 
@@ -700,4 +708,120 @@ model Scripture {
   @@map("scriptures")
 }
 
+model PushSubscription {
+  id           String   @id @default(uuid())
+  churchId     String   @map("church_id")
+  endpoint     String   @unique(length: 500) @db.VarChar(1024)
+  p256dh       String   @db.VarChar(255)
+  auth         String   @db.VarChar(255)
+  topics       Json
+  personId     String?  @map("person_id")
+  userAgent    String?  @map("user_agent") @db.VarChar(255)
+  failureCount Int      @default(0) @map("failure_count")
+  createdAt    DateTime @default(now()) @map("created_at")
+  lastSeenAt   DateTime @default(now()) @map("last_seen_at")
 
+  church Church  @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  person Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  @@index([churchId])
+  @@map("push_subscriptions")
+}
+
+model NightPrayer {
+  id                 String   @id @default(uuid())
+  churchId           String   @unique @map("church_id")
+  title              String   @db.VarChar(150)
+  description        String?  @db.Text
+  imageUrl           String?  @map("image_url") @db.VarChar(512)
+  meetUrl            String   @map("meet_url") @db.VarChar(255)
+  timeOfDay          String   @map("time_of_day") @db.VarChar(5)
+  durationMin        Int      @default(60) @map("duration_min")
+  joinOpensMinBefore Int      @default(10) @map("join_opens_min_before")
+  daysOfWeek         Json
+  reminderOffsetsMin Json     @map("reminder_offsets_min")
+  isActive           Boolean  @default(true) @map("is_active")
+  updatedById        String?  @map("updated_by_id")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  church     Church                 @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  exceptions NightPrayerException[]
+
+  @@map("night_prayers")
+}
+
+model NightPrayerException {
+  id            String   @id @default(uuid())
+  nightPrayerId String   @map("night_prayer_id")
+  date          DateTime @db.Date
+  cancelled     Boolean  @default(true)
+  note          String?  @db.VarChar(255)
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  nightPrayer NightPrayer @relation(fields: [nightPrayerId], references: [id], onDelete: Cascade)
+
+  @@unique([nightPrayerId, date])
+  @@map("night_prayer_exceptions")
+}
+
+model ConfessionReminder {
+  id           String    @id @default(uuid())
+  confessionId String    @map("confession_id")
+  timeOfDay    String    @map("time_of_day") @db.VarChar(5)
+  daysOfWeek   Json
+  startsOn     DateTime? @map("starts_on") @db.Date
+  endsOn       DateTime? @map("ends_on") @db.Date
+  message      String?   @db.VarChar(200)
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  confession Confession @relation(fields: [confessionId], references: [id], onDelete: Cascade)
+
+  @@index([confessionId])
+  @@map("confession_reminders")
+}
+
+model EncouragementMessage {
+  id         String    @id @default(uuid())
+  churchId   String    @map("church_id")
+  text       String    @db.VarChar(240)
+  reference  String?   @db.VarChar(100)
+  isActive   Boolean   @default(true) @map("is_active")
+  lastSentAt DateTime? @map("last_sent_at")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
+
+  @@index([churchId, isActive, lastSentAt])
+  @@map("encouragement_messages")
+}
+
+model NotificationSettings {
+  id                 String   @id @default(uuid())
+  churchId           String   @unique @map("church_id")
+  scriptureSendTime  String   @default("07:00") @map("scripture_send_time") @db.VarChar(5)
+  encouragementSlots Json     @default("[]") @map("encouragement_slots")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  church Church @relation(fields: [churchId], references: [id], onDelete: Cascade)
+
+  @@map("notification_settings")
+}
+
+model NotificationLog {
+  id         String   @id @default(uuid())
+  churchId   String   @map("church_id")
+  key        String   @unique @db.VarChar(255)
+  topic      String   @db.VarChar(30)
+  title      String   @db.VarChar(150)
+  body       String   @db.VarChar(300)
+  url        String   @db.VarChar(255)
+  recipients Int      @default(0)
+  delivered  Int      @default(0)
+  failed     Int      @default(0)
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([churchId, createdAt])
+  @@map("notification_log")
+}

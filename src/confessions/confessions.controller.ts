@@ -37,6 +37,7 @@ import { CreateConfessionDto } from './dto/create-confession.dto';
 import { QueryConfessionsDto } from './dto/query-confessions.dto';
 import { ReorderConfessionsDto } from './dto/reorder-confessions.dto';
 import { UpdateConfessionDto } from './dto/update-confession.dto';
+import { UpdateConfessionRemindersDto } from './dto/confession-reminders.dto';
 
 @ApiTags('Confessions')
 @Controller('confessions')
@@ -217,6 +218,43 @@ export class ConfessionsController {
     @CurrentUser() user: ActiveUserData,
   ) {
     return this.confessionsService.uploadAudio(id, voice, file, user);
+  }
+
+  @Get(':id/reminders')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiBearerAuth()
+  @ResponseMessage('Confession reminders retrieved successfully')
+  @ApiOperation({
+    summary: 'List reminders for a confession (Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Confession reminders retrieved successfully',
+  })
+  async getReminders(
+    @Param('id') id: string,
+    @CurrentUser() user: ActiveUserData,
+  ) {
+    return this.confessionsService.getReminders(id, user);
+  }
+
+  @Put(':id/reminders')
+  @Roles('ADMIN', 'SUPER_ADMIN')
+  @ApiBearerAuth()
+  @ResponseMessage('Confession reminders updated successfully')
+  @ApiOperation({
+    summary: 'Replace all reminders for a confession (Admin only)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Confession reminders updated successfully',
+  })
+  async updateReminders(
+    @Param('id') id: string,
+    @Body() dto: UpdateConfessionRemindersDto,
+    @CurrentUser() user: ActiveUserData,
+  ) {
+    return this.confessionsService.updateReminders(id, dto, user);
   }
 
   @Delete(':id/audio/:voice')

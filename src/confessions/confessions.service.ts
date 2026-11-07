@@ -22,6 +22,7 @@ import { CreateConfessionDto } from './dto/create-confession.dto';
 import { QueryConfessionsDto } from './dto/query-confessions.dto';
 import { ReorderConfessionsDto } from './dto/reorder-confessions.dto';
 import { UpdateConfessionDto } from './dto/update-confession.dto';
+import { UpdateConfessionRemindersDto } from './dto/confession-reminders.dto';
 import {
   calculateWordCount,
   generateExcerpt,
@@ -780,5 +781,70 @@ export class ConfessionsService {
       previous,
       next,
     };
+  }
+
+  async getReminders(confessionId: string, user: ActiveUserData) {
+    const confession = await this.prisma.confession.findUnique({
+      where: { id: confessionId },
+    });
+    if (!confession || confession.churchId !== user.churchId) {
+      throw new NotFoundException('Confession not found');
+    }
+
+    const reminders = await this.prisma.confessionReminder.findMany({
+      where: { confessionId },
+      orderBy: [{ timeOfDay: 'asc' }, { createdAt: 'asc' }],
+    });
+
+    return reminders.map((r) => ({
+      id: r.id,
+      confessionId: r.confessionId,
+      timeOfDay: r.timeOfDay,
+      daysOfWeek: Array.isArray(r.daysOfWeek) ? r.daysOfWeek : [],
+      startsOn: r.startsOn ? r.startsOn.toISOString().slice(0, 10) : null,
+      endsOn: r.endsOn ? r.endsOn.toISOString().slice(0, 10) : null,
+      message: r.message ?? null,
+      createdAt: r.createdAt,
+    }));
+  }
+
+  async updateReminders(
+    confessionId: string,
+    dto: UpdateConfessionRemindersDto,
+    user: ActiveUserData,
+  ) {
+    const confession = await this.prisma.confession.findUnique({
+      where: { id: confessionId },
+    });
+    if (!confession || confession.churchId !== user.churchId) {
+      throw new NotFoundException('Confession not found');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.confessionReminder.deleteMany({
+        where: { confessionId },
+      });
+
+      if (dto.reminders && dto.reminders.length > 0) {
+        for (const rem of dto.reminders) {
+          await tx.confessionReminder.create({
+            data: {
+              confessionId,
+              timeOfDay: rem.timeOfDay,
+              daysOfWeek: rem.daysOfWeek ?? [],
+              startsOn: rem.startsOn
+                ? new Date(`${rem.startsOn}T00:00:00.000Z`)
+                : null,
+              endsOn: rem.endsOn
+                ? new Date(`${rem.endsOn}T00:00:00.000Z`)
+                : null,
+              message: rem.message ?? null,
+            },
+          });
+        }
+      }
+    });
+
+    return this.getReminders(confessionId, user);
   }
 }

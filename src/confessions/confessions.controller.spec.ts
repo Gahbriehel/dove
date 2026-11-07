@@ -18,6 +18,8 @@ describe('ConfessionsController', () => {
     remove: jest.Mock;
     uploadAudio: jest.Mock;
     removeAudio: jest.Mock;
+    getReminders?: jest.Mock;
+    updateReminders?: jest.Mock;
   };
 
   const adminUser: ActiveUserData = {
@@ -151,5 +153,28 @@ describe('ConfessionsController', () => {
       adminUser,
     );
     expect(result.message).toBe('Audio deleted');
+  });
+
+  it('delegates getReminders to service', async () => {
+    serviceMock.getReminders = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: 'rem-1', timeOfDay: '06:30' }]);
+    const result = await controller.getReminders('c-1', adminUser);
+    expect(serviceMock.getReminders).toHaveBeenCalledWith('c-1', adminUser);
+    expect(result).toHaveLength(1);
+  });
+
+  it('delegates updateReminders to service', async () => {
+    const dto = { reminders: [{ timeOfDay: '06:30' }] };
+    serviceMock.updateReminders = jest
+      .fn()
+      .mockResolvedValueOnce([{ id: 'rem-1', timeOfDay: '06:30' }]);
+    const result = await controller.updateReminders('c-1', dto, adminUser);
+    expect(serviceMock.updateReminders).toHaveBeenCalledWith(
+      'c-1',
+      dto,
+      adminUser,
+    );
+    expect(result).toHaveLength(1);
   });
 });
