@@ -32,7 +32,7 @@ export class DepartmentsController {
   constructor(private readonly departmentsService: DepartmentsService) {}
 
   @Post()
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'COORDINATOR')
   @HttpCode(HttpStatus.CREATED)
   @ResponseMessage('Department created successfully')
   @ApiOperation({ summary: 'Create a new department' })
@@ -81,7 +81,7 @@ export class DepartmentsController {
   }
 
   @Patch(':id')
-  @Roles('SUPER_ADMIN', 'ADMIN')
+  @Roles('SUPER_ADMIN', 'ADMIN', 'COORDINATOR')
   @ResponseMessage('Department updated successfully')
   @ApiOperation({ summary: 'Update a department' })
   @ApiResponse({ status: 200, description: 'Department updated successfully' })
