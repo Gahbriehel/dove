@@ -7,6 +7,7 @@ import {
   IsIn,
   IsOptional,
   IsString,
+  MinLength,
 } from 'class-validator';
 
 export class UpdateUserDto {
@@ -24,6 +25,17 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  @ApiPropertyOptional({
+    example: 'NewSecurePassword123!',
+    minLength: 8,
+    description:
+      'Reset the user password (min 8 chars). Signs the user out everywhere.',
+  })
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  password?: string;
 
   @ApiPropertyOptional({ example: '+1-555-012-3456' })
   @IsOptional()

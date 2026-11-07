@@ -175,9 +175,14 @@ export class UsersController {
   async update(
     @Param('id') id: string,
     @Body() dto: UpdateUserDto,
-    @CurrentUser('churchId') userChurchId: string,
+    @CurrentUser() currentUser: ActiveUserData,
   ) {
-    const user = await this.usersService.update(id, dto, userChurchId);
+    const user = await this.usersService.update(
+      id,
+      dto,
+      currentUser.churchId,
+      currentUser,
+    );
     return { message: 'User updated successfully', user };
   }
 

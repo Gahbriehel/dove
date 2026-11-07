@@ -10,6 +10,7 @@ import type { ActiveUserData } from '../common/decorators/current-user.decorator
 import { PrismaService } from '../prisma/prisma.service';
 import { CSV_EXPORT_MAX_ROWS } from '../common/utils/csv.util';
 import { normalizePhoneOrThrow } from '../common/utils/phone.util';
+import * as bcrypt from 'bcryptjs';
 import { QueryUserDto } from './dto/query-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -149,8 +150,28 @@ export class UsersService {
     return user;
   }
 
-  async update(id: string, dto: UpdateUserDto, userChurchId?: string) {
+  async update(
+    id: string,
+    dto: UpdateUserDto,
+    userChurchId?: string,
+    currentUser?: ActiveUserData,
+  ) {
     const existingUser = await this.findOne(id, userChurchId);
+
+    if (dto.password !== undefined) {
+      const targetIsSuperAdmin = existingUser.userRoles.some(
+        (ur) => ur.role.name === 'SUPER_ADMIN',
+      );
+      if (
+        targetIsSuperAdmin &&
+        currentUser &&
+        !currentUser.roles?.includes('SUPER_ADMIN')
+      ) {
+        throw new ForbiddenException(
+          'Admins cannot reset the password of Super Admin users',
+        );
+      }
+    }
 
     const targetPhone =
       dto.phone !== undefined
@@ -233,6 +254,11 @@ export class UsersService {
           },
         });
       }
+    }
+
+    if (dto.password !== undefined) {
+      // Also revokes the user's refresh tokens
+      await this.updatePassword(id, await bcrypt.hash(dto.password, 10));
     }
 
     return this.prisma.user.update({

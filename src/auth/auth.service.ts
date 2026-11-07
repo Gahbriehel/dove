@@ -1,5 +1,8 @@
 import {
+  BadRequestException,
+  Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
   ForbiddenException,
   NotFoundException,
@@ -8,10 +11,14 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import * as crypto from 'crypto';
+import { EMAIL_SERVICE } from '../email/interfaces/email-service.interface';
+import type { IEmailService } from '../email/interfaces/email-service.interface';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 
 interface JwtRefreshPayload {
@@ -41,13 +48,18 @@ function parseDurationToMs(duration: string): number {
   }
 }
 
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly usersService: UsersService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
+    @Inject(EMAIL_SERVICE) private readonly emailService: IEmailService,
   ) {}
 
   async login(loginDto: LoginDto) {
@@ -226,6 +238,88 @@ export class AuthService {
     await this.usersService.updatePassword(userId, newPasswordHash);
 
     return { message: 'Password changed successfully. Please log in again.' };
+  }
+
+  async forgotPassword(dto: ForgotPasswordDto) {
+    // Always return the same response so account existence is not revealed.
+    const genericResponse = {
+      message:
+        'If an account exists for that email, a password reset link has been sent.',
+    };
+
+    const user = await this.usersService.findByEmail(dto.email);
+    if (!user || !user.isActive) {
+      return genericResponse;
+    }
+
+    const rawToken = crypto.randomBytes(32).toString('hex');
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(rawToken)
+      .digest('hex');
+
+    // Invalidate any earlier unused links, then issue a new one
+    await this.prisma.passwordResetToken.deleteMany({
+      where: { userId: user.id, usedAt: null },
+    });
+    await this.prisma.passwordResetToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      },
+    });
+
+    const baseUrl =
+      this.configService.get<string>('RESET_PASSWORD_URL') ||
+      `${this.configService.get<string>('APP_URL') || 'http://localhost:3000'}/reset-password`;
+    const resetUrl = `${baseUrl}?token=${rawToken}`;
+
+    try {
+      await this.emailService.sendCustomBroadcast({
+        recipientEmail: user.email,
+        recipientName: `${user.firstName} ${user.lastName}`.trim(),
+        subject: 'Reset your password',
+        heading: 'Reset your password',
+        message:
+          'We received a request to reset your password. This link expires in 1 hour. If you did not request this, you can safely ignore this email.',
+        ctaLabel: 'Reset password',
+        ctaUrl: resetUrl,
+        churchName: user.church?.name,
+        emailType: 'PASSWORD_RESET',
+        churchId: user.churchId,
+        userId: user.id,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to send password reset email to ${user.email}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+
+    return genericResponse;
+  }
+
+  async resetPassword(dto: ResetPasswordDto) {
+    const tokenHash = crypto
+      .createHash('sha256')
+      .update(dto.token)
+      .digest('hex');
+
+    const record = await this.prisma.passwordResetToken.findUnique({
+      where: { tokenHash },
+    });
+
+    if (!record || record.usedAt || record.expiresAt < new Date()) {
+      throw new BadRequestException('Reset link is invalid or has expired');
+    }
+
+    const newPasswordHash = await bcrypt.hash(dto.newPassword, 10);
+    await this.usersService.updatePassword(record.userId, newPasswordHash);
+    await this.prisma.passwordResetToken.deleteMany({
+      where: { userId: record.userId },
+    });
+
+    return { message: 'Password reset successfully. Please log in.' };
   }
 
   private async generateTokens(
