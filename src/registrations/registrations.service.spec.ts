@@ -27,6 +27,9 @@ describe('RegistrationsService', () => {
     event: {
       findUnique: jest.fn(),
     },
+    registration: {
+      findFirst: jest.fn(),
+    },
     $transaction: jest.fn(async (cb: (tx: typeof txMock) => Promise<unknown>) =>
       cb(txMock),
     ),
@@ -52,6 +55,38 @@ describe('RegistrationsService', () => {
     }).compile();
 
     service = module.get<RegistrationsService>(RegistrationsService);
+  });
+
+  describe('findOne', () => {
+    it('never exposes PIN or token columns on the nested person', async () => {
+      prismaMock.registration.findFirst.mockResolvedValue({
+        id: 'reg-1',
+        token: 'reg-token',
+        event: { id: 'ev-1' },
+        team: null,
+        attendance: null,
+        person: {
+          id: 'p-1',
+          firstName: 'Jane',
+          lastName: 'Doe',
+          pinHash: 'secret-hash',
+          pinFailedAttempts: 1,
+          pinLockedUntil: null,
+          profileToken: 'tok',
+          profileTokenExpiresAt: null,
+          profileTokenOpenedAt: null,
+        },
+      });
+
+      const result = await service.findOne('reg-1', 'church-1');
+
+      expect(result.person).not.toHaveProperty('pinHash');
+      expect(result.person).not.toHaveProperty('pinFailedAttempts');
+      expect(result.person).not.toHaveProperty('pinLockedUntil');
+      expect(result.person).not.toHaveProperty('profileToken');
+      expect(result.person.claimed).toBe(true);
+      expect(result.person.firstName).toBe('Jane');
+    });
   });
 
   describe('register - capacity enforcement', () => {

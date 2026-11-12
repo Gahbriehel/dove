@@ -7,6 +7,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { toPublicPerson } from '../people/people.service';
 import {
   EventStatus,
   MembershipStatus,
@@ -492,6 +493,7 @@ export class RegistrationsService {
 
     return {
       ...registration,
+      person: toPublicPerson(registration.person),
       qrCodeDataUrl,
     };
   }
