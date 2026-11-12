@@ -3,12 +3,14 @@ import { Injectable } from '@nestjs/common';
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_ADD_PER_DAY = 10;
 const MAX_CLAIM_LINK_PER_DAY = 3;
+const MAX_INVITE_EMAIL_PER_DAY = 3;
 const PRUNE_THRESHOLD = 1000;
 
 @Injectable()
 export class RelativeRateLimiter {
   private readonly addHits = new Map<string, number[]>();
   private readonly claimLinkHits = new Map<string, number[]>();
+  private readonly inviteEmailHits = new Map<string, number[]>();
 
   tryConsumeAdd(memberId: string, now = Date.now()): boolean {
     if (this.addHits.size > PRUNE_THRESHOLD) this.prune(this.addHits, now);
@@ -36,6 +38,21 @@ export class RelativeRateLimiter {
     }
     recent.push(now);
     this.claimLinkHits.set(personId, recent);
+    return true;
+  }
+
+  tryConsumeInviteEmail(personId: string, now = Date.now()): boolean {
+    if (this.inviteEmailHits.size > PRUNE_THRESHOLD)
+      this.prune(this.inviteEmailHits, now);
+    const recent = (this.inviteEmailHits.get(personId) ?? []).filter(
+      (t) => now - t < DAY_MS,
+    );
+    if (recent.length >= MAX_INVITE_EMAIL_PER_DAY) {
+      this.inviteEmailHits.set(personId, recent);
+      return false;
+    }
+    recent.push(now);
+    this.inviteEmailHits.set(personId, recent);
     return true;
   }
 

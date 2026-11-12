@@ -268,6 +268,45 @@ export class ProfileController {
     );
   }
 
+  @Post('me/relatives/:personId/invite-email')
+  @UseGuards(MemberAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Invite email sent successfully')
+  @ApiOperation({
+    summary: 'Re-send the claim invite email to a created relative',
+    description:
+      'Issues a fresh single-use 48-hour profile token and emails it to an unclaimed relative who has an email address. Invalidates any previously issued link.',
+  })
+  @ApiResponse({ status: 200, description: 'Invite email sent successfully' })
+  @ApiResponse({
+    status: 403,
+    description: 'Not the member who created this relative (code: NOT_CREATOR)',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Already claimed (code: ALREADY_CLAIMED) or no email (code: NO_EMAIL)',
+  })
+  @ApiResponse({
+    status: 429,
+    description: 'Limited to 3 invite emails per day per relative',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Email provider failure (code: EMAIL_SEND_FAILED)',
+  })
+  async resendRelativeInviteEmail(
+    @CurrentMember() member: ActiveMemberData,
+    @Param('personId') personId: string,
+  ) {
+    return this.profileService.resendRelativeInviteEmail(
+      member.sub,
+      member.churchId,
+      personId,
+    );
+  }
+
   @Get(':token')
   @ResponseMessage('Profile retrieved successfully')
   @ApiOperation({

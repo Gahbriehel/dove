@@ -1233,7 +1233,45 @@ describe('ProfileService', () => {
           maskedEmail: 't***@example.com',
           maskedPhone: '•••• ••• 7890',
           canSendClaimLink: true,
+          canSendInviteEmail: true,
+          inviteEmailSent: true,
         });
+      });
+
+      it('sends a claim email immediately when the relative has an email', async () => {
+        prismaMock.person.findFirst.mockResolvedValue(null);
+
+        await service.addRelative('member-1', 'church-1', {
+          firstName: 'Tunde',
+          lastName: 'Adeyemi',
+          relationship: RelationshipType.SPOUSE,
+          email: 'tunde@example.com',
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(emailProviderMock.sendCustomBroadcast).toHaveBeenCalledTimes(1);
+        expect(emailProviderMock.sendCustomBroadcast).toHaveBeenCalledWith(
+          expect.objectContaining({
+            recipientEmail: 'tunde@example.com',
+            personId: 'relative-1',
+            emailType: 'MAGIC_LINK',
+            ctaUrl: expect.stringMatching(/\/[0-9a-f]{64}$/),
+          }),
+        );
+      });
+
+      it('does not send an email when the relative has only a phone', async () => {
+        prismaMock.person.findFirst.mockResolvedValue(null);
+
+        await service.addRelative('member-1', 'church-1', {
+          firstName: 'Tunde',
+          lastName: 'Adeyemi',
+          relationship: RelationshipType.SPOUSE,
+          phone: '08034567890',
+        });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(emailProviderMock.sendCustomBroadcast).not.toHaveBeenCalled();
       });
 
       it('maps Prisma P2002 conflict to CONTACT_ALREADY_REGISTERED', async () => {
@@ -1325,6 +1363,7 @@ describe('ProfileService', () => {
           maskedEmail: 'c***@example.com',
           maskedPhone: '•••• ••• 2222',
           canSendClaimLink: true,
+          canSendInviteEmail: true,
         });
 
         // Incoming: parent-1 -> member-1 (CHILD inverted to PARENT)
@@ -1338,6 +1377,7 @@ describe('ProfileService', () => {
           maskedEmail: null,
           maskedPhone: '•••• ••• 3333',
           canSendClaimLink: false,
+          canSendInviteEmail: false,
         });
       });
     });
@@ -1401,6 +1441,113 @@ describe('ProfileService', () => {
         expect(prismaMock.personRelationship.delete).toHaveBeenCalledWith({
           where: { id: 'rel-1' },
         });
+      });
+    });
+
+    describe('resendRelativeInviteEmail', () => {
+      const unclaimed = {
+        id: 'rel-p-1',
+        firstName: 'Tunde',
+        lastName: 'Adeyemi',
+        email: 'tunde@example.com',
+        pinHash: null,
+      };
+
+      it('throws NotFoundException if person not found', async () => {
+        prismaMock.person.findFirst.mockResolvedValue(null);
+        await expect(
+          service.resendRelativeInviteEmail('member-1', 'church-1', 'x'),
+        ).rejects.toThrow(NotFoundException);
+      });
+
+      it('throws NOT_CREATOR if member did not create the relationship', async () => {
+        prismaMock.person.findFirst.mockResolvedValue(unclaimed);
+        prismaMock.personRelationship.findFirst.mockResolvedValue(null);
+        await expect(
+          service.resendRelativeInviteEmail('member-1', 'church-1', 'rel-p-1'),
+        ).rejects.toMatchObject({ response: { code: 'NOT_CREATOR' } });
+      });
+
+      it('throws ALREADY_CLAIMED if person has a pin', async () => {
+        prismaMock.person.findFirst.mockResolvedValue({
+          ...unclaimed,
+          pinHash: 'hash',
+        });
+        prismaMock.personRelationship.findFirst.mockResolvedValue({ id: 'r' });
+        await expect(
+          service.resendRelativeInviteEmail('member-1', 'church-1', 'rel-p-1'),
+        ).rejects.toMatchObject({ response: { code: 'ALREADY_CLAIMED' } });
+      });
+
+      it('throws NO_EMAIL if person has no email', async () => {
+        prismaMock.person.findFirst.mockResolvedValue({
+          ...unclaimed,
+          email: null,
+        });
+        prismaMock.personRelationship.findFirst.mockResolvedValue({ id: 'r' });
+        await expect(
+          service.resendRelativeInviteEmail('member-1', 'church-1', 'rel-p-1'),
+        ).rejects.toMatchObject({ response: { code: 'NO_EMAIL' } });
+      });
+
+      it('throws 429 when the daily invite email limit is exceeded', async () => {
+        prismaMock.person.findFirst.mockResolvedValue(unclaimed);
+        prismaMock.personRelationship.findFirst.mockResolvedValue({ id: 'r' });
+        const rateLimiter = (
+          service as unknown as { relativeRateLimiter: RelativeRateLimiter }
+        ).relativeRateLimiter;
+        jest.spyOn(rateLimiter, 'tryConsumeInviteEmail').mockReturnValue(false);
+        await expect(
+          service.resendRelativeInviteEmail('member-1', 'church-1', 'rel-p-1'),
+        ).rejects.toMatchObject({ status: HttpStatus.TOO_MANY_REQUESTS });
+      });
+
+      it('issues a fresh token and sends the email', async () => {
+        prismaMock.person.findFirst.mockResolvedValue(unclaimed);
+        prismaMock.personRelationship.findFirst.mockResolvedValue({ id: 'r' });
+        prismaMock.person.findUnique.mockResolvedValue({ firstName: 'Ada' });
+        prismaMock.church.findUnique.mockResolvedValue({
+          id: 'church-1',
+          name: 'Amazing Grace',
+        });
+        prismaMock.person.update.mockResolvedValue({});
+
+        const res = await service.resendRelativeInviteEmail(
+          'member-1',
+          'church-1',
+          'rel-p-1',
+        );
+
+        expect(prismaMock.person.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { id: 'rel-p-1' },
+            data: expect.objectContaining({
+              profileToken: expect.stringMatching(/^[0-9a-f]{64}$/),
+              profileTokenOpenedAt: null,
+            }),
+          }),
+        );
+        expect(emailProviderMock.sendCustomBroadcast).toHaveBeenCalledWith(
+          expect.objectContaining({ recipientEmail: 'tunde@example.com' }),
+        );
+        expect(res).toMatchObject({
+          sent: true,
+          maskedEmail: 't***@example.com',
+        });
+      });
+
+      it('throws 503 EMAIL_SEND_FAILED when the provider fails', async () => {
+        prismaMock.person.findFirst.mockResolvedValue(unclaimed);
+        prismaMock.personRelationship.findFirst.mockResolvedValue({ id: 'r' });
+        prismaMock.person.findUnique.mockResolvedValue({ firstName: 'Ada' });
+        prismaMock.church.findUnique.mockResolvedValue({ id: 'church-1' });
+        prismaMock.person.update.mockResolvedValue({});
+        emailProviderMock.sendCustomBroadcast.mockRejectedValueOnce(
+          new Error('boom'),
+        );
+        await expect(
+          service.resendRelativeInviteEmail('member-1', 'church-1', 'rel-p-1'),
+        ).rejects.toMatchObject({ response: { code: 'EMAIL_SEND_FAILED' } });
       });
     });
 

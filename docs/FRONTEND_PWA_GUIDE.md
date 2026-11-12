@@ -739,6 +739,18 @@ Display the generic message directly under the form. Do not reveal which field m
 #### Rate Limit:
 Each member may create up to 10 relatives per day. Exceeding this returns `429 Too Many Requests`.
 
+#### Response & Automatic Invite Email:
+If the relative has an **email address**, Dove emails them a "Claim your profile" link **immediately** after creation (single-use, valid 48 hours). No extra call is needed. The email is sent in the background; a delivery failure never fails the create request.
+
+```typescript
+export interface AddRelativeResponse extends RelativeItem {
+  inviteEmailSent: boolean; // true when an invite email was dispatched on creation
+}
+```
+- `inviteEmailSent: true` means the send was **attempted** (it is not a delivery guarantee). Show a confirmation such as *"We emailed an invite to t***@example.com"* using `maskedEmail`.
+- Phone-only relatives get no email (`inviteEmailSent: false`); offer the WhatsApp invite instead (see 11.4).
+- If both are provided, the email goes out automatically and the WhatsApp option remains available.
+
 ---
 
 ### 11.3 Viewing Family Links (`GET /profile/me/relatives`)
@@ -757,7 +769,8 @@ export interface RelativeItem {
   claimed: boolean;
   maskedEmail?: string | null; // e.g. "t***@example.com"
   maskedPhone?: string | null; // e.g. "•••• ••• 7890"
-  canSendClaimLink: boolean;
+  canSendClaimLink: boolean;   // unclaimed + added by me + has phone  -> WhatsApp invite
+  canSendInviteEmail: boolean; // unclaimed + added by me + has email  -> (re)send invite email
 }
 ```
 - Relationship types are automatically inverted when viewing incoming links (`PARENT` is shown as `CHILD`, and `CHILD` is shown as `PARENT`).
@@ -790,6 +803,8 @@ export async function sendRelativeClaimLink(personId: string) {
 - Errors: `403` `NOT_CREATOR`, `409` `ALREADY_CLAIMED`, `409` `NO_PHONE`.
 
 ---
+
+profile
 
 ### 11.5 Removing a Family Link (`DELETE /profile/me/relatives/:relationshipId`)
 Either person in the link can remove the relationship.

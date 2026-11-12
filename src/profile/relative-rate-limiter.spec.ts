@@ -48,4 +48,16 @@ describe('RelativeRateLimiter', () => {
       expect(limiter.tryConsumeClaimLink('target-1', dayLater)).toBe(true);
     });
   });
+
+  describe('tryConsumeInviteEmail', () => {
+    it('allows 3 per day per person and is independent of claim links', () => {
+      const now = 1000000;
+      for (let i = 0; i < 3; i++) {
+        expect(limiter.tryConsumeInviteEmail('p-1', now + i)).toBe(true);
+      }
+      expect(limiter.tryConsumeInviteEmail('p-1', now + 3)).toBe(false);
+      expect(limiter.tryConsumeInviteEmail('p-2', now + 3)).toBe(true);
+      expect(limiter.tryConsumeClaimLink('p-1', now + 3)).toBe(true);
+    });
+  });
 });

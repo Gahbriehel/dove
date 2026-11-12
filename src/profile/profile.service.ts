@@ -9,6 +9,7 @@ import {
   Logger,
   NotFoundException,
   Optional,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -1005,8 +1006,17 @@ export class ProfileService {
       }
     }
 
+    // When an email is available, issue a claim token up front so the invite
+    // email can be dispatched right after creation.
+    const inviteToken = normalizedEmail
+      ? crypto.randomBytes(32).toString('hex')
+      : null;
+    const inviteExpiresAt = inviteToken
+      ? new Date(Date.now() + PROFILE_WHATSAPP_LINK_TTL_MS)
+      : null;
+
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      const result = await this.prisma.$transaction(async (tx) => {
         const newPerson = await tx.person.create({
           data: {
             churchId,
@@ -1018,6 +1028,11 @@ export class ProfileService {
             dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
             membershipStatus: MembershipStatus.VISITOR,
             namesConfirmed: true,
+            ...(inviteToken && {
+              profileToken: inviteToken,
+              profileTokenExpiresAt: inviteExpiresAt,
+              profileTokenOpenedAt: null,
+            }),
           },
         });
 
@@ -1046,8 +1061,27 @@ export class ProfileService {
           maskedEmail: maskEmail(newPerson.email),
           maskedPhone: maskPhone(newPerson.phone),
           canSendClaimLink: Boolean(newPerson.phone),
+          canSendInviteEmail: Boolean(newPerson.email),
+          inviteEmailSent: Boolean(inviteToken),
         };
       });
+
+      if (normalizedEmail && inviteToken) {
+        // Fire-and-forget: email failure must not fail relative creation.
+        this.sendRelativeInviteEmail(
+          memberId,
+          churchId,
+          result.person,
+          normalizedEmail,
+          inviteToken,
+        ).catch((error: unknown) => {
+          this.logger.error(
+            `Failed to dispatch relative invite email to ${normalizedEmail}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }
+
+      return result;
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -1060,6 +1094,161 @@ export class ProfileService {
       }
       throw error;
     }
+  }
+
+  private async sendRelativeInviteEmail(
+    memberId: string,
+    churchId: string,
+    person: { id: string; firstName: string; lastName: string },
+    recipientEmail: string,
+    token: string,
+  ): Promise<void> {
+    const [sender, church] = await Promise.all([
+      this.prisma.person.findUnique({
+        where: { id: memberId },
+        select: { firstName: true },
+      }),
+      this.prisma.church.findUnique({
+        where: { id: churchId },
+        select: {
+          id: true,
+          name: true,
+          shortName: true,
+          email: true,
+          phone: true,
+        },
+      }),
+    ]);
+
+    const appUrl =
+      this.configService.get<string>('appUrl')?.replace(/\/+$/, '') ||
+      'http://localhost:3000';
+    const profileBaseUrl =
+      this.configService.get<string>('profileUrl')?.replace(/\/+$/, '') ||
+      `${appUrl}/profile`;
+    const churchShortName =
+      church?.shortName?.trim() || church?.name || 'Your Church';
+    const senderName = sender?.firstName || 'A relative';
+
+    await this.emailProvider.sendCustomBroadcast({
+      recipientEmail,
+      recipientName: `${person.firstName} ${person.lastName}`.trim(),
+      subject: `${senderName} added you to ${churchShortName}`,
+      heading: 'Claim your profile',
+      message: `Hello ${person.firstName}, ${senderName} added you to ${churchShortName} so you're all connected. Use the button below to claim and set up your profile. The link expires in 48 hours and can be used once.`,
+      ctaLabel: 'Claim my profile',
+      ctaUrl: `${profileBaseUrl}/${token}`,
+      churchName: church?.name || 'Your Church',
+      contactEmail: church?.email || undefined,
+      contactPhone: church?.phone || undefined,
+      churchId: church?.id || churchId,
+      personId: person.id,
+      emailType: 'MAGIC_LINK',
+    });
+  }
+
+  /**
+   * Re-sends the claim email to an unclaimed relative the member created.
+   * Issues a fresh 48-hour single-use token (invalidating any previous one).
+   */
+  async resendRelativeInviteEmail(
+    memberId: string,
+    churchId: string,
+    personId: string,
+  ) {
+    const person = await this.prisma.person.findFirst({
+      where: { id: personId, churchId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        pinHash: true,
+      },
+    });
+
+    if (!person) {
+      throw new NotFoundException(`Person with ID "${personId}" not found`);
+    }
+
+    const link = await this.prisma.personRelationship.findFirst({
+      where: {
+        churchId,
+        createdByPersonId: memberId,
+        OR: [
+          { personId: memberId, relatedPersonId: personId },
+          { personId: personId, relatedPersonId: memberId },
+        ],
+      },
+    });
+
+    if (!link) {
+      throw new ForbiddenException({
+        message:
+          'Only the member who created this profile can send an invite email',
+        code: 'NOT_CREATOR',
+      });
+    }
+
+    if (person.pinHash) {
+      throw new ConflictException({
+        message: 'This profile has already been claimed',
+        code: 'ALREADY_CLAIMED',
+      });
+    }
+
+    if (!person.email) {
+      throw new ConflictException({
+        message: 'This person does not have an email address',
+        code: 'NO_EMAIL',
+      });
+    }
+
+    if (!this.relativeRateLimiter.tryConsumeInviteEmail(personId)) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message: 'Invite emails are limited to 3 per day for this person',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + PROFILE_WHATSAPP_LINK_TTL_MS);
+
+    await this.prisma.person.update({
+      where: { id: person.id },
+      data: {
+        profileToken: token,
+        profileTokenExpiresAt: expiresAt,
+        profileTokenOpenedAt: null,
+      },
+    });
+
+    try {
+      await this.sendRelativeInviteEmail(
+        memberId,
+        churchId,
+        person,
+        person.email,
+        token,
+      );
+    } catch (error) {
+      this.logger.error(
+        `Failed to resend relative invite email to ${person.email}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      throw new ServiceUnavailableException({
+        message: 'We could not send the invite email. Please try again later.',
+        code: 'EMAIL_SEND_FAILED',
+      });
+    }
+
+    return {
+      sent: true,
+      maskedEmail: maskEmail(person.email),
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 
   /**
@@ -1107,6 +1296,9 @@ export class ProfileService {
       const canSendClaimLink = Boolean(
         addedByMe && !claimed && targetPerson.phone,
       );
+      const canSendInviteEmail = Boolean(
+        addedByMe && !claimed && targetPerson.email,
+      );
 
       return {
         relationshipId: rel.id,
@@ -1122,6 +1314,7 @@ export class ProfileService {
         maskedEmail: maskEmail(targetPerson.email),
         maskedPhone: maskPhone(targetPerson.phone),
         canSendClaimLink,
+        canSendInviteEmail,
       };
     });
 
