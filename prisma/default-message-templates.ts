@@ -86,4 +86,10 @@ export const DEFAULT_MESSAGE_TEMPLATES: DefaultMessageTemplate[] = [
     name: 'General check-in',
     body: "Hi {{firstName}}, it's {{adminName}} from {{churchName}}. Just checking in to see how you're doing. We appreciate you! 😊",
   },
+  {
+    purpose: OutreachPurpose.PROFILE_LINK,
+    checkInReason: null,
+    name: 'Profile link',
+    body: "Hi {{firstName}}, it's {{adminName}} from {{churchName}}. Here is your link to set up your profile: {{profileLink}}",
+  },
 ];

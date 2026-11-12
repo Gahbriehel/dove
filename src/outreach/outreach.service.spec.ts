@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { callArg, MockModel } from '../common/testing/mock.util';
 import {
   BadRequestException,
@@ -84,7 +85,12 @@ describe('OutreachService', () => {
           .fn()
           .mockResolvedValue({ firstName: 'John', displayName: 'Pastor John' }),
       },
-      person: { findFirst: jest.fn(), findMany: jest.fn(), count: jest.fn() },
+      person: {
+        findFirst: jest.fn(),
+        findMany: jest.fn(),
+        count: jest.fn(),
+        update: jest.fn(),
+      },
       pastoralCheckIn: {
         findFirst: jest.fn(),
         findUnique: jest.fn(),
@@ -263,6 +269,28 @@ describe('OutreachService', () => {
         response: { code: 'CHECK_IN_PERSON_MISMATCH' },
       });
     });
+
+    it('handles PROFILE_LINK: renders [profile link] without generating token', async () => {
+      prisma.person.findFirst.mockResolvedValue(person);
+      prisma.messageTemplate.findMany.mockResolvedValue([
+        {
+          id: 'tpl-profile',
+          name: 'Profile Link',
+          checkInReason: null,
+          body: 'Hello {{firstName}}, set up your profile here: {{profileLink}}',
+        },
+      ]);
+
+      const result = await service.preview(
+        { personId: 'person-1', purpose: OutreachPurpose.PROFILE_LINK },
+        admin,
+      );
+
+      expect(result.body).toBe(
+        'Hello Sarah, set up your profile here: [profile link]',
+      );
+      expect(prisma.person.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('open', () => {
@@ -334,6 +362,69 @@ describe('OutreachService', () => {
       await expect(
         service.open({ ...dto, templateId: 'tpl-x' }, admin),
       ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('returns 409 ALREADY_CLAIMED when sending PROFILE_LINK to person with pinHash', async () => {
+      prisma.person.findFirst.mockResolvedValue({
+        ...person,
+        pinHash: 'claimed-pin',
+      });
+
+      await expect(
+        service.open(
+          {
+            personId: 'person-1',
+            purpose: OutreachPurpose.PROFILE_LINK,
+            body: 'Hello Sarah [profile link]',
+          },
+          admin,
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'ALREADY_CLAIMED' },
+      });
+    });
+
+    it('generates 48-hour profile token, replaces [profile link] in whatsappUrl, and stores [profile link] in body', async () => {
+      prisma.person.findFirst.mockResolvedValue({
+        ...person,
+        pinHash: null,
+      });
+      prisma.person.update.mockResolvedValue({});
+      prisma.outreachMessage.create.mockResolvedValue({ id: 'o-profile-1' });
+
+      const result = await service.open(
+        {
+          personId: 'person-1',
+          purpose: OutreachPurpose.PROFILE_LINK,
+          body: 'Hello Sarah, your link: [profile link]',
+        },
+        admin,
+      );
+
+      expect(prisma.person.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'person-1' },
+          data: expect.objectContaining({
+            profileToken: expect.any(String),
+            profileTokenExpiresAt: expect.any(Date),
+            profileTokenOpenedAt: null,
+          }),
+        }),
+      );
+
+      // Verify stored body in DB has [profile link], not the token
+      expect(prisma.outreachMessage.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          body: 'Hello Sarah, your link: [profile link]',
+          purpose: OutreachPurpose.PROFILE_LINK,
+        }),
+      });
+
+      // Verify whatsappUrl contains real profile URL with the generated token
+      expect(result.whatsappUrl).toContain('https://wa.me/2348034567890?text=');
+      expect(decodeURIComponent(result.whatsappUrl)).toMatch(
+        /Hello Sarah, your link: http:\/\/localhost:3000\/profile\/[a-f0-9]{64}/,
+      );
     });
   });
 

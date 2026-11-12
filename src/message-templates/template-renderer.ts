@@ -2,10 +2,11 @@ export const TEMPLATE_PLACEHOLDERS = [
   'firstName',
   'adminName',
   'churchName',
+  'profileLink',
 ] as const;
 
 export type TemplatePlaceholder = (typeof TEMPLATE_PLACEHOLDERS)[number];
-export type TemplateVars = Record<TemplatePlaceholder, string>;
+export type TemplateVars = Partial<Record<TemplatePlaceholder, string>>;
 
 export const TEMPLATE_BODY_MAX_LENGTH = 1000;
 
@@ -17,13 +18,13 @@ const CANONICAL_NAMES = new Map<string, TemplatePlaceholder>(
 
 export class TemplateRenderer {
   /**
-   * Replaces `{{firstName}}`, `{{adminName}}` and `{{churchName}}`. Matching
-   * ignores case and inner whitespace. Unknown tokens are left untouched.
+   * Replaces `{{firstName}}`, `{{adminName}}`, `{{churchName}}` and `{{profileLink}}`.
+   * Matching ignores case and inner whitespace. Unknown or unsupplied tokens are left untouched.
    */
   static render(body: string, vars: TemplateVars): string {
     return body.replace(PLACEHOLDER_PATTERN, (match, token: string) => {
       const name = CANONICAL_NAMES.get(token.toLowerCase());
-      return name ? vars[name] : match;
+      return name && vars[name] !== undefined ? vars[name] : match;
     });
   }
 

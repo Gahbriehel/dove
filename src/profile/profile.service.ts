@@ -1,10 +1,14 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
+  Optional,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,18 +22,30 @@ import type { IEmailService } from '../email/interfaces/email-service.interface'
 import {
   normalizePhone,
   normalizePhoneOrThrow,
+  toWhatsAppDigits,
 } from '../common/utils/phone.util';
+import { maskEmail, maskPhone } from '../common/utils/mask.util';
+import { getInverseRelationshipType } from '../common/utils/relationship.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { ClaimRateLimiter } from './claim-rate-limiter';
+import { RelativeRateLimiter } from './relative-rate-limiter';
 import { ClaimProfileDto } from './dto/claim-profile.dto';
+import { CreateRelativeDto } from './dto/create-relative.dto';
 import { MemberLoginDto } from './dto/member-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePinDto } from './dto/change-pin.dto';
 import { MemberSessionService } from './member-session.service';
 import { MemberJwtPayload } from './guards/member-auth.guard';
 import { getPhoneCandidates, validatePinStrength } from './utils/pin.util';
+import {
+  CONTACT_ALREADY_REGISTERED_CODE,
+  CONTACT_ALREADY_REGISTERED_MESSAGE,
+  CONTACT_REQUIRED_CODE,
+  CONTACT_REQUIRED_MESSAGE,
+} from '../people/people.constants';
 
-const PROFILE_LINK_TTL_MS = 30 * 60 * 1000;
+export const PROFILE_LINK_TTL_MS = 30 * 60 * 1000;
+export const PROFILE_WHATSAPP_LINK_TTL_MS = 48 * 60 * 60 * 1000;
 /** After first opening a valid link, the form may be saved for this long. */
 const PROFILE_SAVE_GRACE_MS = 30 * 60 * 1000;
 const CLAIM_RESPONSE_MESSAGE =
@@ -81,6 +97,8 @@ export class ProfileService {
     private readonly memberSessionService: MemberSessionService,
     @Inject(EMAIL_SERVICE)
     private readonly emailProvider: IEmailService,
+    @Optional()
+    private readonly relativeRateLimiter: RelativeRateLimiter = new RelativeRateLimiter(),
   ) {}
 
   private formatPerson(
@@ -217,36 +235,71 @@ export class ProfileService {
       });
     }
 
-    // Match person: email, or phone, scoped to church.
-    const conditions: Prisma.PersonWhereInput[] = [];
-    if (submittedEmail) conditions.push({ email: submittedEmail });
-    if (rawPhone) {
-      conditions.push({ phone: rawPhone });
-      if (submittedPhone && submittedPhone !== rawPhone) {
-        conditions.push({ phone: submittedPhone });
-      }
-    }
-
-    let person = await this.prisma.person.findFirst({
-      where: {
-        churchId,
-        OR: conditions,
-      },
-    });
+    // Match person: if email provided, match by email; otherwise by phone.
+    let person = submittedEmail
+      ? await this.prisma.person.findFirst({
+          where: { churchId, email: submittedEmail },
+        })
+      : rawPhone
+        ? await this.prisma.person.findFirst({
+            where: {
+              churchId,
+              OR: [
+                { phone: rawPhone },
+                ...(submittedPhone && submittedPhone !== rawPhone
+                  ? [{ phone: submittedPhone }]
+                  : []),
+              ],
+            },
+          })
+        : null;
 
     if (!person && submittedEmail) {
       // Self-service visitor auto-creation.
-      person = await this.prisma.person.create({
-        data: {
-          churchId,
-          firstName: 'New',
-          lastName: 'Visitor',
-          email: submittedEmail,
-          phone: rawPhone || null,
-          membershipStatus: MembershipStatus.VISITOR,
-          namesConfirmed: false,
-        },
-      });
+      // If phone belongs to someone else, create without the phone.
+      let phoneToAssign = rawPhone || null;
+      if (phoneToAssign) {
+        const phoneOwner = await this.prisma.person.findFirst({
+          where: { churchId, phone: phoneToAssign },
+          select: { id: true },
+        });
+        if (phoneOwner) {
+          phoneToAssign = null;
+        }
+      }
+
+      try {
+        person = await this.prisma.person.create({
+          data: {
+            churchId,
+            firstName: 'New',
+            lastName: 'Visitor',
+            email: submittedEmail,
+            phone: phoneToAssign,
+            membershipStatus: MembershipStatus.VISITOR,
+            namesConfirmed: false,
+          },
+        });
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2002'
+        ) {
+          person = await this.prisma.person.create({
+            data: {
+              churchId,
+              firstName: 'New',
+              lastName: 'Visitor',
+              email: submittedEmail,
+              phone: null,
+              membershipStatus: MembershipStatus.VISITOR,
+              namesConfirmed: false,
+            },
+          });
+        } else {
+          throw err;
+        }
+      }
     }
 
     // Unknown phone without matching person: silent 200 (no account creation).
@@ -497,10 +550,49 @@ export class ProfileService {
 
     if (firstName !== undefined) personUpdateData.firstName = firstName.trim();
     if (lastName !== undefined) personUpdateData.lastName = lastName.trim();
-    if (email !== undefined)
-      personUpdateData.email = email.trim().toLowerCase();
-    if (phone !== undefined)
-      personUpdateData.phone = normalizePhoneOrThrow(phone);
+
+    if (email !== undefined) {
+      const targetEmail = email?.trim().toLowerCase() || null;
+      personUpdateData.email = targetEmail;
+      if (targetEmail && targetEmail !== person.email) {
+        const emailConflict = await this.prisma.person.findFirst({
+          where: {
+            churchId: person.churchId,
+            email: targetEmail,
+            id: { not: person.id },
+          },
+          select: { id: true },
+        });
+        if (emailConflict) {
+          throw new ConflictException({
+            message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+            code: CONTACT_ALREADY_REGISTERED_CODE,
+          });
+        }
+      }
+    }
+
+    if (phone !== undefined) {
+      const targetPhone = normalizePhoneOrThrow(phone);
+      personUpdateData.phone = targetPhone;
+      if (targetPhone && targetPhone !== person.phone) {
+        const phoneConflict = await this.prisma.person.findFirst({
+          where: {
+            churchId: person.churchId,
+            phone: targetPhone,
+            id: { not: person.id },
+          },
+          select: { id: true },
+        });
+        if (phoneConflict) {
+          throw new ConflictException({
+            message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+            code: CONTACT_ALREADY_REGISTERED_CODE,
+          });
+        }
+      }
+    }
+
     if (gender !== undefined) personUpdateData.gender = gender;
     if (address !== undefined)
       personUpdateData.address = address?.trim() || null;
@@ -517,63 +609,76 @@ export class ProfileService {
     }
 
     // Transaction to update Person and Department Memberships atomically
-    return this.prisma.$transaction(async (tx) => {
-      const updatedPerson = await tx.person.update({
-        where: { id: person.id },
-        data: personUpdateData,
-      });
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const updatedPerson = await tx.person.update({
+          where: { id: person.id },
+          data: personUpdateData,
+        });
 
-      if (departmentIds !== undefined) {
-        await tx.departmentMembership.deleteMany({
-          where: {
-            personId: person.id,
-            departmentId: { notIn: departmentIds },
+        if (departmentIds !== undefined) {
+          await tx.departmentMembership.deleteMany({
+            where: {
+              personId: person.id,
+              departmentId: { notIn: departmentIds },
+            },
+          });
+
+          const existingDeptIds = new Set(
+            person.departmentMemberships.map((m) => m.departmentId),
+          );
+
+          const newDeptIds = departmentIds.filter(
+            (deptId) => !existingDeptIds.has(deptId),
+          );
+
+          for (const deptId of newDeptIds) {
+            await tx.departmentMembership.create({
+              data: {
+                personId: person.id,
+                departmentId: deptId,
+                role: 'Member',
+              },
+            });
+          }
+        }
+
+        const freshDepartments = await tx.departmentMembership.findMany({
+          where: { personId: person.id },
+          include: {
+            department: {
+              select: { id: true, name: true, description: true },
+            },
           },
         });
 
-        const existingDeptIds = new Set(
-          person.departmentMemberships.map((m) => m.departmentId),
-        );
+        const response: {
+          message: string;
+          person: ReturnType<typeof this.formatPerson>;
+          accessToken?: string;
+        } = {
+          message: 'Profile updated successfully',
+          person: this.formatPerson(updatedPerson, freshDepartments),
+        };
 
-        const newDeptIds = departmentIds.filter(
-          (deptId) => !existingDeptIds.has(deptId),
-        );
-
-        for (const deptId of newDeptIds) {
-          await tx.departmentMembership.create({
-            data: {
-              personId: person.id,
-              departmentId: deptId,
-              role: 'Member',
-            },
-          });
+        if (updatedPerson.pinHash) {
+          response.accessToken = await this.generateMemberToken(updatedPerson);
         }
-      }
 
-      const freshDepartments = await tx.departmentMembership.findMany({
-        where: { personId: person.id },
-        include: {
-          department: {
-            select: { id: true, name: true, description: true },
-          },
-        },
+        return response;
       });
-
-      const response: {
-        message: string;
-        person: ReturnType<typeof this.formatPerson>;
-        accessToken?: string;
-      } = {
-        message: 'Profile updated successfully',
-        person: this.formatPerson(updatedPerson, freshDepartments),
-      };
-
-      if (updatedPerson.pinHash) {
-        response.accessToken = await this.generateMemberToken(updatedPerson);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
       }
-
-      return response;
-    });
+      throw error;
+    }
   }
 
   async login(dto: MemberLoginDto) {
@@ -840,5 +945,329 @@ export class ProfileService {
     return Promise.resolve({
       message: 'Logged out successfully',
     });
+  }
+
+  /**
+   * Adds a new relative: creates a Person record (as an un-claimed visitor)
+   * and links them to the signed-in member in a single transaction.
+   */
+  async addRelative(
+    memberId: string,
+    churchId: string,
+    dto: CreateRelativeDto,
+  ) {
+    if (!this.relativeRateLimiter.tryConsumeAdd(memberId)) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message:
+            'Daily limit for adding relatives reached. Please try again tomorrow.',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const normalizedEmail =
+      dto.email !== undefined ? dto.email?.trim().toLowerCase() || null : null;
+    const normalizedPhone =
+      dto.phone !== undefined ? normalizePhoneOrThrow(dto.phone) : null;
+
+    if (!normalizedEmail && !normalizedPhone) {
+      throw new BadRequestException({
+        message: CONTACT_REQUIRED_MESSAGE,
+        code: CONTACT_REQUIRED_CODE,
+      });
+    }
+
+    if (normalizedEmail) {
+      const existingEmail = await this.prisma.person.findFirst({
+        where: { churchId, email: normalizedEmail },
+        select: { id: true },
+      });
+      if (existingEmail) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
+      }
+    }
+
+    if (normalizedPhone) {
+      const existingPhone = await this.prisma.person.findFirst({
+        where: { churchId, phone: normalizedPhone },
+        select: { id: true },
+      });
+      if (existingPhone) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
+      }
+    }
+
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const newPerson = await tx.person.create({
+          data: {
+            churchId,
+            firstName: dto.firstName.trim(),
+            lastName: dto.lastName.trim(),
+            email: normalizedEmail,
+            phone: normalizedPhone,
+            gender: dto.gender || null,
+            dateOfBirth: dto.dateOfBirth ? new Date(dto.dateOfBirth) : null,
+            membershipStatus: MembershipStatus.VISITOR,
+            namesConfirmed: true,
+          },
+        });
+
+        const rel = await tx.personRelationship.create({
+          data: {
+            churchId,
+            personId: memberId,
+            relatedPersonId: newPerson.id,
+            type: dto.relationship,
+            note: dto.relationshipNote?.trim() || null,
+            createdByPersonId: memberId,
+          },
+        });
+
+        return {
+          relationshipId: rel.id,
+          person: {
+            id: newPerson.id,
+            firstName: newPerson.firstName,
+            lastName: newPerson.lastName,
+          },
+          relationship: rel.type,
+          relationshipNote: rel.note,
+          addedByMe: true,
+          claimed: false,
+          maskedEmail: maskEmail(newPerson.email),
+          maskedPhone: maskPhone(newPerson.phone),
+          canSendClaimLink: Boolean(newPerson.phone),
+        };
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Lists relatives linked to the signed-in member (both incoming and outgoing).
+   */
+  async listMyRelatives(memberId: string, churchId: string) {
+    const relationships = await this.prisma.personRelationship.findMany({
+      where: {
+        churchId,
+        OR: [{ personId: memberId }, { relatedPersonId: memberId }],
+      },
+      include: {
+        person: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            pinHash: true,
+          },
+        },
+        relatedPerson: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            pinHash: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const items = relationships.map((rel) => {
+      const isFromMe = rel.personId === memberId;
+      const targetPerson = isFromMe ? rel.relatedPerson : rel.person;
+      const relType = isFromMe
+        ? rel.type
+        : getInverseRelationshipType(rel.type);
+      const addedByMe = rel.createdByPersonId === memberId;
+      const claimed = Boolean(targetPerson.pinHash);
+      const canSendClaimLink = Boolean(
+        addedByMe && !claimed && targetPerson.phone,
+      );
+
+      return {
+        relationshipId: rel.id,
+        person: {
+          id: targetPerson.id,
+          firstName: targetPerson.firstName,
+          lastName: targetPerson.lastName,
+        },
+        relationship: relType,
+        relationshipNote: rel.note,
+        addedByMe,
+        claimed,
+        maskedEmail: maskEmail(targetPerson.email),
+        maskedPhone: maskPhone(targetPerson.phone),
+        canSendClaimLink,
+      };
+    });
+
+    return { items };
+  }
+
+  /**
+   * Deletes a relationship link. Allowed for either party in the relationship.
+   */
+  async deleteMyRelative(
+    memberId: string,
+    churchId: string,
+    relationshipId: string,
+  ) {
+    const rel = await this.prisma.personRelationship.findUnique({
+      where: { id: relationshipId },
+    });
+
+    if (!rel || rel.churchId !== churchId) {
+      throw new NotFoundException('Relationship not found');
+    }
+
+    if (rel.personId !== memberId && rel.relatedPersonId !== memberId) {
+      throw new ForbiddenException(
+        'You do not have permission to remove this relationship',
+      );
+    }
+
+    await this.prisma.personRelationship.delete({
+      where: { id: relationshipId },
+    });
+
+    return { message: 'Relationship removed successfully' };
+  }
+
+  /**
+   * Generates a 48-hour claim link for an unclaimed relative created by the member.
+   */
+  async createRelativeClaimLink(
+    memberId: string,
+    churchId: string,
+    personId: string,
+  ) {
+    const person = await this.prisma.person.findFirst({
+      where: { id: personId, churchId },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        phone: true,
+        pinHash: true,
+      },
+    });
+
+    if (!person) {
+      throw new NotFoundException(`Person with ID "${personId}" not found`);
+    }
+
+    // Allowed only if the member created this person
+    const link = await this.prisma.personRelationship.findFirst({
+      where: {
+        churchId,
+        createdByPersonId: memberId,
+        OR: [
+          { personId: memberId, relatedPersonId: personId },
+          { personId: personId, relatedPersonId: memberId },
+        ],
+      },
+    });
+
+    if (!link) {
+      throw new ForbiddenException({
+        message:
+          'Only the member who created this profile can request a claim link',
+        code: 'NOT_CREATOR',
+      });
+    }
+
+    if (person.pinHash) {
+      throw new ConflictException({
+        message: 'This profile has already been claimed',
+        code: 'ALREADY_CLAIMED',
+      });
+    }
+
+    if (!person.phone) {
+      throw new ConflictException({
+        message: 'This person does not have a phone number',
+        code: 'NO_PHONE',
+      });
+    }
+
+    if (!this.relativeRateLimiter.tryConsumeClaimLink(personId)) {
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.TOO_MANY_REQUESTS,
+          message:
+            'Claim link requests are limited to 3 per day for this person',
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + PROFILE_WHATSAPP_LINK_TTL_MS);
+
+    await this.prisma.person.update({
+      where: { id: person.id },
+      data: {
+        profileToken: token,
+        profileTokenExpiresAt: expiresAt,
+        profileTokenOpenedAt: null,
+      },
+    });
+
+    const appUrl =
+      this.configService.get<string>('appUrl')?.replace(/\/+$/, '') ||
+      'http://localhost:3000';
+    const profileBaseUrl =
+      this.configService.get<string>('profileUrl')?.replace(/\/+$/, '') ||
+      `${appUrl}/profile`;
+    const url = `${profileBaseUrl}/${token}`;
+
+    const [sender, church] = await Promise.all([
+      this.prisma.person.findUnique({
+        where: { id: memberId },
+        select: { firstName: true },
+      }),
+      this.prisma.church.findUnique({
+        where: { id: churchId },
+        select: { name: true, shortName: true },
+      }),
+    ]);
+
+    const senderName = sender?.firstName || 'your relative';
+    const churchName =
+      church?.shortName?.trim() || church?.name || 'our church';
+
+    const messageText = `Hi ${person.firstName}, it's ${senderName}. I've added you to ${churchName} so we're all connected. Open this link to set up your profile: ${url}`;
+    const digits = toWhatsAppDigits(person.phone);
+    const whatsappUrl = `https://wa.me/${digits}?text=${encodeURIComponent(messageText)}`;
+
+    return {
+      url,
+      whatsappUrl,
+      expiresAt: expiresAt.toISOString(),
+    };
   }
 }

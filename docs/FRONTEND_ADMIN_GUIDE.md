@@ -458,3 +458,100 @@ Typical flow:
 2. The admin edits the text if they want to, then `POST /outreach/whatsapp`, and open `https://wa.me/<whatsappDigits>?text=<encoded body>`.
 3. When the admin returns, ask whether they sent it and call `PATCH /outreach/:id/confirm`.
 4. After a confirmed pastoral check-in message, ask "Mark this check-in complete?" and use `PATCH /check-ins/:id`.
+
+---
+
+## 7. Family Links & Contact Integrity
+
+### 7.1 Contact Requirement & Uniqueness Rules
+- **At Least One Contact Required**: When creating a person (`POST /people`), at least one of `email` or `phone` must be provided. If omitted, Dove returns `400 Bad Request` with code `CONTACT_REQUIRED`.
+- **Cannot Clear Both**: When updating a person (`PATCH /people/:id`), staff cannot remove the last contact detail.
+- **Unique Per Church**: Neither email nor phone can be shared by multiple people in the same church.
+- **Taken Value Error**: If an email or phone is already registered, Dove returns `409 Conflict`:
+  ```json
+  {
+    "statusCode": 409,
+    "message": "This email or phone number is already registered.",
+    "code": "CONTACT_ALREADY_REGISTERED"
+  }
+  ```
+  The response is generic and never discloses which field collided or who owns it.
+
+---
+
+### 7.2 Viewing Family Links (`GET /people/:id/relatives`)
+In the Person Details drawer in Olive, a **"Family & Relatives"** section lists all connections:
+
+```http
+GET /people/:id/relatives
+```
+
+#### Response:
+```json
+{
+  "items": [
+    {
+      "relationshipId": "rel-uuid-1",
+      "person": {
+        "id": "person-uuid-2",
+        "firstName": "Tunde",
+        "lastName": "Adeyemi"
+      },
+      "relationship": "SPOUSE",
+      "relationshipNote": null,
+      "addedByMe": false,
+      "claimed": true,
+      "maskedEmail": "t***@example.com",
+      "maskedPhone": "•••• ••• 7890",
+      "canSendClaimLink": false
+    }
+  ]
+}
+```
+
+- Directional relationships are inverted automatically (`PARENT` displays as `CHILD` from the child's perspective, and vice versa).
+- Shows whether each relative has claimed their profile (`claimed: true` indicates `pinHash` is set).
+
+---
+
+### 7.3 Linking Two Existing People (`POST /people/:id/relatives`)
+Staff (`SUPER_ADMIN` or `ADMIN`) can connect any two existing individuals in the church:
+
+```http
+POST /people/:id/relatives
+```
+
+#### Request Body:
+```json
+{
+  "relatedPersonId": "target-person-uuid",
+  "relationship": "SPOUSE",
+  "relationshipNote": null
+}
+```
+
+- `relationship`: `'SPOUSE' | 'PARENT' | 'CHILD' | 'SIBLING' | 'OTHER'`.
+- `relationshipNote`: optional string (up to 100 characters) for `OTHER` (e.g. "Guardian", "Cousin").
+- Rejections:
+  - Linking a person to themselves: `400 Bad Request` (`CANNOT_LINK_SELF`).
+  - Link already exists between these two people in either direction: `409 Conflict` (`RELATIONSHIP_ALREADY_EXISTS`).
+
+---
+
+### 7.4 Removing a Family Link (`DELETE /people/:id/relatives/:relationshipId`)
+Staff (`SUPER_ADMIN` or `ADMIN`) can remove a link. Deleting the relationship deletes **only** the link row; neither person record is deleted or modified.
+
+---
+
+### 7.5 Onboarding / Recovery for Phone-Only People (`PROFILE_LINK`)
+Phone-only people who cannot receive email magic links can be onboarded or recovered by staff via WhatsApp:
+
+1. **Trigger**: In Person Details, if `claimed` is false (`pinHash == null`) and the person has a phone number, display **"Send Profile Link (WhatsApp)"**.
+2. **Preview**: `POST /outreach/whatsapp/preview` with `purpose: "PROFILE_LINK"`. Renders the template with `[profile link]` placeholder and shows any warnings (`NO_PHONE`, `INVALID_PHONE`, `WHATSAPP_OPT_OUT`).
+3. **Send**: `POST /outreach/whatsapp` with `purpose: "PROFILE_LINK"`.
+   - Generates a **48-hour single-use token**.
+   - Embeds the live claim URL into `whatsappUrl`.
+   - Redacts the token in DB storage, saving `[profile link]` in the message log for privacy.
+   - If the person has already set a PIN, returns `409 Conflict` with code `ALREADY_CLAIMED`.
+4. Olive opens `whatsappUrl` to initiate the chat.
+

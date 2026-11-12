@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,9 +20,46 @@ import { UpdatePersonDto } from './dto/update-person.dto';
 import { QueryPersonDto } from './dto/query-person.dto';
 import { PromotePersonDto } from './dto/promote-person.dto';
 import { QueryPersonMessagesDto } from './dto/query-person-messages.dto';
+import { LinkPeopleDto } from './dto/link-people.dto';
+import type { ActiveUserData } from '../common/decorators/current-user.decorator';
+import { maskEmail, maskPhone } from '../common/utils/mask.util';
+import { getInverseRelationshipType } from '../common/utils/relationship.util';
+import {
+  CONTACT_ALREADY_REGISTERED_CODE,
+  CONTACT_ALREADY_REGISTERED_MESSAGE,
+  CONTACT_REQUIRED_CODE,
+  CONTACT_REQUIRED_MESSAGE,
+} from './people.constants';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MESSAGE_PREVIEW_LENGTH = 140;
+
+const PERSON_PRIVATE_FIELDS = [
+  'pinHash',
+  'pinFailedAttempts',
+  'pinLockedUntil',
+  'profileToken',
+  'profileTokenExpiresAt',
+  'profileTokenOpenedAt',
+] as const;
+
+type PersonPrivateField = (typeof PERSON_PRIVATE_FIELDS)[number];
+
+/**
+ * Strips credential/token columns from a Person row and exposes a `claimed`
+ * flag instead of the raw pinHash. Every person payload that leaves the API
+ * must go through this.
+ */
+export function toPublicPerson<T extends { pinHash?: string | null }>(
+  person: T,
+): Omit<T, PersonPrivateField> & { claimed: boolean } {
+  const copy: Record<string, unknown> = { ...person };
+  for (const field of PERSON_PRIVATE_FIELDS) delete copy[field];
+  return { ...copy, claimed: Boolean(person.pinHash) } as Omit<
+    T,
+    PersonPrivateField
+  > & { claimed: boolean };
+}
 
 const SENDER_SELECT = {
   id: true,
@@ -44,7 +82,8 @@ export class PeopleService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(createPersonDto: CreatePersonDto, userChurchId?: string) {
-    const { dateOfBirth, lastFollowUpAt, phone, ...rest } = createPersonDto;
+    const { dateOfBirth, lastFollowUpAt, phone, email, ...rest } =
+      createPersonDto;
 
     const churchId = userChurchId || (await this.prisma.getDefaultChurchId());
 
@@ -53,6 +92,44 @@ export class PeopleService {
     });
     if (!church) {
       throw new NotFoundException(`Church with ID "${churchId}" not found`);
+    }
+
+    const normalizedEmail =
+      email !== undefined ? email?.trim().toLowerCase() || null : null;
+    const normalizedPhone =
+      phone !== undefined ? normalizePhoneOrThrow(phone) : null;
+
+    if (!normalizedEmail && !normalizedPhone) {
+      throw new BadRequestException({
+        message: CONTACT_REQUIRED_MESSAGE,
+        code: CONTACT_REQUIRED_CODE,
+      });
+    }
+
+    if (normalizedEmail) {
+      const existingEmail = await this.prisma.person.findFirst({
+        where: { churchId, email: normalizedEmail },
+        select: { id: true },
+      });
+      if (existingEmail) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
+      }
+    }
+
+    if (normalizedPhone) {
+      const existingPhone = await this.prisma.person.findFirst({
+        where: { churchId, phone: normalizedPhone },
+        select: { id: true },
+      });
+      if (existingPhone) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
+      }
     }
 
     const membershipStatus =
@@ -65,19 +142,34 @@ export class PeopleService {
           ? FollowUpStatus.PENDING
           : null;
 
-    return this.prisma.person.create({
-      data: {
-        ...rest,
-        ...(phone !== undefined && { phone: normalizePhoneOrThrow(phone) }),
-        churchId,
-        membershipStatus,
-        followUpStatus,
-        dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
-        ...(lastFollowUpAt !== undefined && {
-          lastFollowUpAt: lastFollowUpAt ? new Date(lastFollowUpAt) : null,
-        }),
-      },
-    });
+    try {
+      const created = await this.prisma.person.create({
+        data: {
+          ...rest,
+          ...(email !== undefined && { email: normalizedEmail }),
+          ...(phone !== undefined && { phone: normalizedPhone }),
+          churchId,
+          membershipStatus,
+          followUpStatus,
+          dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+          ...(lastFollowUpAt !== undefined && {
+            lastFollowUpAt: lastFollowUpAt ? new Date(lastFollowUpAt) : null,
+          }),
+        },
+      });
+      return toPublicPerson(created);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
+      }
+      throw error;
+    }
   }
 
   private buildWhere(
@@ -285,7 +377,7 @@ export class PeopleService {
       );
 
       return {
-        ...person,
+        ...toPublicPerson(person),
         eventsRegisteredCount,
         eventsAttendedCount,
         departments,
@@ -346,7 +438,7 @@ export class PeopleService {
     });
 
     return people.map((person) => ({
-      ...person,
+      ...toPublicPerson(person),
       eventsRegisteredCount: person.registrations.length,
       eventsAttendedCount: person.registrations.filter(
         (reg) => reg.attendance !== null,
@@ -431,7 +523,7 @@ export class PeopleService {
       })) || [];
 
     return {
-      ...person,
+      ...toPublicPerson(person),
       eventsRegisteredCount,
       eventsAttendedCount,
       departments,
@@ -452,13 +544,68 @@ export class PeopleService {
       emailOptOut,
       whatsappOptOut,
       phone,
+      email,
       ...rest
     } = updatePersonDto;
 
     const data: Prisma.PersonUpdateInput = { ...rest };
 
-    if (phone !== undefined) {
-      data.phone = normalizePhoneOrThrow(phone);
+    const touchedEmail = email !== undefined;
+    const touchedPhone = phone !== undefined;
+
+    let targetEmail = existing.email;
+    if (touchedEmail) {
+      targetEmail = email?.trim().toLowerCase() || null;
+      data.email = targetEmail;
+    }
+
+    let targetPhone = existing.phone;
+    if (touchedPhone) {
+      targetPhone = normalizePhoneOrThrow(phone);
+      data.phone = targetPhone;
+    }
+
+    if (touchedEmail || touchedPhone) {
+      if (!targetEmail && !targetPhone) {
+        throw new BadRequestException({
+          message: CONTACT_REQUIRED_MESSAGE,
+          code: CONTACT_REQUIRED_CODE,
+        });
+      }
+    }
+
+    if (touchedEmail && targetEmail && targetEmail !== existing.email) {
+      const emailConflict = await this.prisma.person.findFirst({
+        where: {
+          churchId: existing.churchId,
+          email: targetEmail,
+          id: { not: id },
+        },
+        select: { id: true },
+      });
+      if (emailConflict && emailConflict.id !== id) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
+      }
+    }
+
+    if (touchedPhone && targetPhone && targetPhone !== existing.phone) {
+      const phoneConflict = await this.prisma.person.findFirst({
+        where: {
+          churchId: existing.churchId,
+          phone: targetPhone,
+          id: { not: id },
+        },
+        select: { id: true },
+      });
+      if (phoneConflict && phoneConflict.id !== id) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
+      }
     }
 
     if (dateOfBirth !== undefined) {
@@ -491,10 +638,24 @@ export class PeopleService {
       data.followUpStatus = null;
     }
 
-    return this.prisma.person.update({
-      where: { id },
-      data,
-    });
+    try {
+      const updated = await this.prisma.person.update({
+        where: { id },
+        data,
+      });
+      return toPublicPerson(updated);
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        throw new ConflictException({
+          message: CONTACT_ALREADY_REGISTERED_MESSAGE,
+          code: CONTACT_ALREADY_REGISTERED_CODE,
+        });
+      }
+      throw error;
+    }
   }
 
   /**
@@ -670,7 +831,7 @@ export class PeopleService {
       data.followUpStatus = FollowUpStatus.CONVERTED;
     }
 
-    return this.prisma.person.update({
+    const promoted = await this.prisma.person.update({
       where: { id },
       data,
       include: {
@@ -679,6 +840,7 @@ export class PeopleService {
         },
       },
     });
+    return toPublicPerson(promoted);
   }
 
   async remove(id: string, userChurchId?: string) {
@@ -689,5 +851,195 @@ export class PeopleService {
     });
 
     return { message: `Person with ID "${id}" deleted successfully` };
+  }
+
+  /**
+   * Lists family members for a person (staff view).
+   */
+  async listRelatives(personId: string, userChurchId: string) {
+    const person = await this.prisma.person.findFirst({
+      where: { id: personId, churchId: userChurchId },
+      select: { id: true },
+    });
+    if (!person) {
+      throw new NotFoundException(`Person with ID "${personId}" not found`);
+    }
+
+    const relationships = await this.prisma.personRelationship.findMany({
+      where: {
+        churchId: userChurchId,
+        OR: [{ personId }, { relatedPersonId: personId }],
+      },
+      include: {
+        person: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            pinHash: true,
+          },
+        },
+        relatedPerson: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            pinHash: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const items = relationships.map((rel) => {
+      const isFromPerson = rel.personId === personId;
+      const targetPerson = isFromPerson ? rel.relatedPerson : rel.person;
+      const relType = isFromPerson
+        ? rel.type
+        : getInverseRelationshipType(rel.type);
+      const claimed = Boolean(targetPerson.pinHash);
+
+      return {
+        relationshipId: rel.id,
+        person: {
+          id: targetPerson.id,
+          firstName: targetPerson.firstName,
+          lastName: targetPerson.lastName,
+        },
+        relationship: relType,
+        relationshipNote: rel.note,
+        addedByMe: false,
+        claimed,
+        maskedEmail: maskEmail(targetPerson.email),
+        maskedPhone: maskPhone(targetPerson.phone),
+        canSendClaimLink: !claimed && Boolean(targetPerson.phone),
+      };
+    });
+
+    return { items };
+  }
+
+  /**
+   * Links two existing people in Olive (staff link).
+   */
+  async linkRelatives(
+    personId: string,
+    dto: LinkPeopleDto,
+    user: ActiveUserData,
+  ) {
+    const churchId = user.churchId || (await this.prisma.getDefaultChurchId());
+
+    if (personId === dto.relatedPersonId) {
+      throw new BadRequestException('Cannot link a person to themselves');
+    }
+
+    const [personA, personB] = await Promise.all([
+      this.prisma.person.findFirst({
+        where: { id: personId, churchId },
+        select: { id: true },
+      }),
+      this.prisma.person.findFirst({
+        where: { id: dto.relatedPersonId, churchId },
+        select: { id: true },
+      }),
+    ]);
+
+    if (!personA) {
+      throw new NotFoundException(`Person with ID "${personId}" not found`);
+    }
+    if (!personB) {
+      throw new NotFoundException(
+        `Person with ID "${dto.relatedPersonId}" not found`,
+      );
+    }
+
+    const existingLink = await this.prisma.personRelationship.findFirst({
+      where: {
+        churchId,
+        OR: [
+          { personId, relatedPersonId: dto.relatedPersonId },
+          { personId: dto.relatedPersonId, relatedPersonId: personId },
+        ],
+      },
+    });
+
+    if (existingLink) {
+      throw new ConflictException(
+        'A relationship between these two people already exists',
+      );
+    }
+
+    const rel = await this.prisma.personRelationship.create({
+      data: {
+        churchId,
+        personId,
+        relatedPersonId: dto.relatedPersonId,
+        type: dto.relationship,
+        note: dto.relationshipNote?.trim() || null,
+        createdByUserId: user.sub,
+      },
+      include: {
+        relatedPerson: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            pinHash: true,
+          },
+        },
+      },
+    });
+
+    const relatedClaimed = Boolean(rel.relatedPerson.pinHash);
+    return {
+      relationshipId: rel.id,
+      person: {
+        id: rel.relatedPerson.id,
+        firstName: rel.relatedPerson.firstName,
+        lastName: rel.relatedPerson.lastName,
+      },
+      relationship: rel.type,
+      relationshipNote: rel.note,
+      addedByMe: false,
+      claimed: relatedClaimed,
+      maskedEmail: maskEmail(rel.relatedPerson.email),
+      maskedPhone: maskPhone(rel.relatedPerson.phone),
+      canSendClaimLink: !relatedClaimed && Boolean(rel.relatedPerson.phone),
+    };
+  }
+
+  /**
+   * Removes a relationship link between two people (staff action).
+   */
+  async deleteRelative(
+    personId: string,
+    relationshipId: string,
+    userChurchId: string,
+  ) {
+    const rel = await this.prisma.personRelationship.findUnique({
+      where: { id: relationshipId },
+    });
+
+    if (!rel || rel.churchId !== userChurchId) {
+      throw new NotFoundException('Relationship not found');
+    }
+
+    if (rel.personId !== personId && rel.relatedPersonId !== personId) {
+      throw new NotFoundException(
+        'Relationship does not involve the specified person',
+      );
+    }
+
+    await this.prisma.personRelationship.delete({
+      where: { id: relationshipId },
+    });
+
+    return { message: 'Relationship removed successfully' };
   }
 }

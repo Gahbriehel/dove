@@ -10,10 +10,12 @@ describe('TemplateRenderer', () => {
   it('replaces every placeholder', () => {
     expect(
       TemplateRenderer.render(
-        'Hi {{firstName}}, {{adminName}} from {{churchName}}.',
-        vars,
+        'Hi {{firstName}}, {{adminName}} from {{churchName}}. Link: {{profileLink}}',
+        { ...vars, profileLink: 'https://example.com/link' },
       ),
-    ).toBe('Hi Sarah, Pastor John from Amazing Grace.');
+    ).toBe(
+      'Hi Sarah, Pastor John from Amazing Grace. Link: https://example.com/link',
+    );
   });
 
   it('ignores case and inner whitespace', () => {

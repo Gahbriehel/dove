@@ -47,6 +47,15 @@ enum OutreachPurpose {
   BIRTHDAY
   VISITOR_FOLLOW_UP
   PASTORAL_CHECK_IN
+  PROFILE_LINK
+}
+
+enum RelationshipType {
+  SPOUSE
+  PARENT
+  CHILD
+  SIBLING
+  OTHER
 }
 
 enum OutreachStatus {
@@ -123,6 +132,7 @@ model Church {
   nightPrayer           NightPrayer?
   encouragementMessages EncouragementMessage[]
   notificationSettings  NotificationSettings?
+  relationships         PersonRelationship[]
 
   @@map("churches")
 }
@@ -254,12 +264,37 @@ model Person {
   pastoralCheckIns      PastoralCheckIn[]
   outreachMessages      OutreachMessage[]
   pushSubscriptions     PushSubscription[]
+  relationshipsFrom     PersonRelationship[]   @relation("RelationshipFrom")
+  relationshipsTo       PersonRelationship[]   @relation("RelationshipTo")
+  createdRelationships  PersonRelationship[]   @relation("RelationshipCreatedBy")
 
+  @@unique([churchId, email])
+  @@unique([churchId, phone])
   @@index([churchId])
-  @@index([email])
-  @@index([phone])
   @@index([followUpStatus])
   @@map("people")
+}
+
+model PersonRelationship {
+  id                String           @id @default(uuid())
+  churchId          String           @map("church_id")
+  personId          String           @map("person_id")
+  relatedPersonId   String           @map("related_person_id")
+  type              RelationshipType
+  note              String?          @db.VarChar(100)
+  createdByPersonId String?          @map("created_by_person_id")
+  createdByUserId   String?          @map("created_by_user_id")
+  createdAt         DateTime         @default(now()) @map("created_at")
+
+  church        Church  @relation(fields: [churchId], references: [id], onDelete: Cascade)
+  person        Person  @relation("RelationshipFrom", fields: [personId], references: [id], onDelete: Cascade)
+  relatedPerson Person  @relation("RelationshipTo", fields: [relatedPersonId], references: [id], onDelete: Cascade)
+  createdBy     Person? @relation("RelationshipCreatedBy", fields: [createdByPersonId], references: [id], onDelete: SetNull)
+
+  @@unique([personId, relatedPersonId])
+  @@index([relatedPersonId])
+  @@index([churchId])
+  @@map("person_relationships")
 }
 
 model Event {

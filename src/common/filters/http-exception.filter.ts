@@ -56,7 +56,14 @@ export class HttpExceptionFilter implements ExceptionFilter {
           : typeof targetMeta === 'string'
             ? targetMeta
             : 'field';
-        message = `A record with this ${target} already exists.`;
+        const targetString =
+          `${target} ${exception.message || ''}`.toLowerCase();
+        if (targetString.includes('email') || targetString.includes('phone')) {
+          message = 'This email or phone number is already registered.';
+          extraData = { code: 'CONTACT_ALREADY_REGISTERED' };
+        } else {
+          message = `A record with this ${target} already exists.`;
+        }
       } else if (exception.code === 'P2025') {
         status = HttpStatus.NOT_FOUND;
         message = 'Requested record was not found.';

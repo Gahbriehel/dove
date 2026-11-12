@@ -159,6 +159,26 @@ GET /people/:id
 
 Admin only. Retrieves single person details with complete event registration and attendance history.
 
+POST /people
+
+Admin and Super Admin. Creates a person record. Requires at least one of `email` or `phone` (returns 400 `CONTACT_REQUIRED`). If email or phone is already registered to another person in the church, returns 409 `CONTACT_ALREADY_REGISTERED`. Emails are trimmed and lower-cased; phones are normalized to E.164.
+
+PATCH /people/:id
+
+Admin and Super Admin. Updates person details. Cannot clear both email and phone if present (returns 400 `CONTACT_REQUIRED`). If changing email or phone to a value registered to another person in the church, returns 409 `CONTACT_ALREADY_REGISTERED`.
+
+GET /people/:id/relatives
+
+Staff only. Lists family connections for the given person. Returns `{ items: [{ relationshipId, person: { id, firstName, lastName }, relationship, relationshipNote, addedByMe, claimed, maskedEmail, maskedPhone, canSendClaimLink }] }`.
+
+POST /people/:id/relatives
+
+Admin and Super Admin. Links two existing people in the church. Body: `{ relatedPersonId: string, relationship: RelationshipType, relationshipNote?: string }`. Rejects self-linking (400 `CANNOT_LINK_SELF`), duplicate relationships in either direction (409 `RELATIONSHIP_ALREADY_EXISTS`), and non-existent person IDs (404).
+
+DELETE /people/:id/relatives/:relationshipId
+
+Admin and Super Admin. Removes a family link. Deleting the link never deletes either person record.
+
 ---
 
 # Users
@@ -258,6 +278,44 @@ Revokes the member session so the token cannot be reused. Returns 200 `{ message
 
 ---
 
+# Member Family Links
+
+Endpoints for signed-in members managing family connections. Requires member session header `Authorization: Bearer <accessToken>`.
+
+POST /profile/me/relatives
+
+Creates a new person record in the church and links them to the signed-in member.
+Body: `{ firstName: string, lastName: string, relationship: RelationshipType, relationshipNote?: string, email?: string, phone?: string, gender?: Gender, dateOfBirth?: string }`.
+- `firstName`, `lastName`, and `relationship` (`SPOUSE | PARENT | CHILD | SIBLING | OTHER`) are required.
+- At least one of `email` or `phone` is required (returns 400 with code `CONTACT_REQUIRED`).
+- If email or phone is already taken by another person in the church, returns 409 with generic code `CONTACT_ALREADY_REGISTERED`.
+- Creates person as `membershipStatus: VISITOR` and `namesConfirmed: true`.
+- Rate limited to 10 additions per day per member (returns 429).
+- Returns 201 with the created relative item.
+
+GET /profile/me/relatives
+
+Lists all family connections involving the signed-in member (both incoming and outgoing).
+- Inverts relationship types when viewed from the other party (`PARENT` <-> `CHILD`; `SPOUSE` and `SIBLING` remain identical; `OTHER` preserves its note).
+- Returns `{ items: [{ relationshipId, person: { id, firstName, lastName }, relationship, relationshipNote, addedByMe, claimed, maskedEmail, maskedPhone, canSendClaimLink }] }`.
+- `claimed` indicates whether the relative has set their PIN (`pinHash != null`).
+- `canSendClaimLink` is true when `addedByMe` is true, the relative is unclaimed, and has a phone number.
+
+DELETE /profile/me/relatives/:relationshipId
+
+Removes a family connection. Allowed for either party in the relationship (returns 403 if not party to the link). Deleting the link never removes either person record.
+
+POST /profile/me/relatives/:personId/claim-link
+
+Generates a single-use 48-hour onboarding claim link and WhatsApp click-to-chat URL for an unclaimed relative created by the member.
+- Allowed only for the member who created the relative (returns 403 with code `NOT_CREATOR`).
+- Person must be unclaimed (returns 409 with code `ALREADY_CLAIMED` if `pinHash` exists).
+- Person must have a phone number (returns 409 with code `NO_PHONE`).
+- Rate limited to 3 claim links per day per target relative (returns 429).
+- Returns `{ url, whatsappUrl, expiresAt }`.
+
+---
+
 # Phone Numbers
 
 Every phone number written through the API is stored in E.164 (`+2348034567890`). Nigerian numbers may be typed as `0803…`, `803…`, `+234 803…` or `234803…`. An invalid number returns `400` with `Please enter a valid phone number`. Public endpoints (registration, profile claim) do not block on a bad number: it is dropped and a warning is logged.
@@ -293,7 +351,7 @@ POST /message-templates/preview
 
 Body `{ "body": "..." }`. Returns `{ body, unknownPlaceholders }` rendered with sample values.
 
-Allowed placeholders (case and spacing are ignored): `{{firstName}}`, `{{adminName}}`, `{{churchName}}`. Saving a template with any other placeholder returns `400` listing the bad tokens. `body` is limited to 1,000 characters. `checkInReason` is only allowed when `purpose` is `PASTORAL_CHECK_IN`.
+Allowed placeholders (case and spacing are ignored): `{{firstName}}`, `{{adminName}}`, `{{churchName}}`, `{{profileLink}}`. Saving a template with any other placeholder returns `400` listing the bad tokens. `body` is limited to 1,000 characters. `checkInReason` is only allowed when `purpose` is `PASTORAL_CHECK_IN`.
 
 ---
 
@@ -305,6 +363,8 @@ POST /outreach/whatsapp/preview
 
 Body: `{ personId, purpose, checkInId?, templateId? }`. Saves nothing. Returns `person`, `toPhone`, `whatsappDigits`, `template`, `alternatives`, `body`, `lastOutreach` and `warnings`.
 
+When `purpose` is `PROFILE_LINK`, `body` renders `{{profileLink}}` with placeholder `[profile link]` without generating a token.
+
 When `templateId` is omitted a template is chosen: active templates for the purpose, preferring the check-in's reason, skipping the one last used for this person, then random.
 
 Warning codes: `NO_PHONE`, `INVALID_PHONE`, `WHATSAPP_OPT_OUT`, `NO_TEMPLATE`, `ALREADY_GREETED_THIS_YEAR`, `CONTACTED_RECENTLY`.
@@ -314,6 +374,10 @@ Errors (`400` with `code`): `PERSON_NOT_IN_CHURCH`, `CHECK_IN_PERSON_MISMATCH`, 
 POST /outreach/whatsapp
 
 Body: `{ personId, purpose, checkInId?, templateId?, body }` (`body` 1 to 1,000 characters, stored as sent). Records the message as `OPENED`. Returns `409` with `code` `NO_PHONE`, `INVALID_PHONE` or `WHATSAPP_OPT_OUT`.
+
+When `purpose` is `PROFILE_LINK`:
+- Rejects if the person has already set a PIN (returns 409 `ALREADY_CLAIMED`).
+- Issues a 48-hour single-use profile token, embeds the live link URL into `whatsappUrl`, but redacts the token in DB storage to `[profile link]`.
 
 PATCH /outreach/:id/confirm
 

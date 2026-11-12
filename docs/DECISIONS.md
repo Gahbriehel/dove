@@ -163,3 +163,41 @@ Decision
 5. Membership IDs:
    - Retained and reserved strictly for `MEMBER`, `WORKER`, `LEADER`, and `PASTOR` (excluding `VISITOR`).
 
+---
+
+## ADR-008
+
+Title
+
+Family Links and Unique Contact Details
+
+Status
+
+Accepted
+
+Decision
+
+1. Identity & Contact Uniqueness:
+   - Every individual is an independent `Person` record. No "dependent" concept or shared account.
+   - `Person.email` and `Person.phone` are strictly unique per church (`@@unique([churchId, email])`, `@@unique([churchId, phone])`) when present (both fields nullable).
+   - Emails are trimmed and lower-cased on every write. Phones are normalized to E.164 (`normalizePhoneOrThrow`). Blank strings coerce to `null`.
+   - Contact detail required: creating a person (admin create in Olive, member relative addition, self-registration) requires at least one of email or phone; missing both returns 400 `CONTACT_REQUIRED`. Admin updates may not clear both.
+   - Collision privacy: taken email or phone returns HTTP 409 `{ "success": false, "message": "This email or phone number is already registered.", "code": "CONTACT_ALREADY_REGISTERED" }`, revealing neither which field matched nor who owns it. Prisma P2002 constraint violations map to the same response.
+   - `POST /profile/claim` maintains a generic 200 response. If an unknown email arrives with a phone taken by another person, the visitor record is created without the phone.
+
+2. Family Relationships:
+   - Stored once per link in `PersonRelationship` (`RelationshipType`: `SPOUSE`, `PARENT`, `CHILD`, `SIBLING`, `OTHER`). Inverse relationship types are computed dynamically when queried from the other party (`PARENT` <-> `CHILD`, `SPOUSE` and `SIBLING` remain identical, `OTHER` keeps its free-text note).
+   - Foreign key deletion cascades remove only the relationship link row, never the relative's person record.
+   - Self-links and bidirectional duplicates `(a, b)` / `(b, a)` are rejected.
+   - Ownership: records created by relatives cannot be edited by the creator. Only the person themselves can edit their details after claiming their profile (or staff with existing rights in Olive).
+
+3. Claiming & Outreach for Phone-Only Relatives:
+   - Phone-only relatives are invited via WhatsApp click-to-chat links:
+     - Members can request a prefilled WhatsApp link for relatives they added via `POST /profile/me/relatives/:personId/claim-link`.
+     - Staff in Olive can send a claim link via `POST /outreach/whatsapp` with purpose `PROFILE_LINK`.
+   - WhatsApp claim links use a 48-hour single-use token (`PROFILE_WHATSAPP_LINK_TTL_MS`), while email claim links remain 30 minutes.
+   - `POST /outreach/whatsapp/preview` displays placeholder `[profile link]` without issuing a token.
+   - `POST /outreach/whatsapp` issues the live 48-hour token for the `whatsappUrl`, but redacts the token in DB storage by recording `[profile link]` in the message body.
+   - Rate limiting: 10 relative creations/day per member; 3 claim links/day per target relative.
+
+

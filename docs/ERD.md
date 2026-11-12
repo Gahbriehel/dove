@@ -137,6 +137,18 @@ WhatsApp Outreach Fields Added
 | `whatsappOptOut` | Boolean | Set by an admin when someone asks not to be messaged on WhatsApp. Defaults to false. |
 | `whatsappOptOutAt` | DateTime? | When the opt-out was recorded |
 
+Unique Contact Details & PIN Authentication Fields Added
+
+| Field | Type | Purpose |
+|---|---|---|
+| `email` | String? | Unique per church (`@@unique([churchId, email])`). Lower-cased and trimmed. |
+| `phone` | String? | Unique per church (`@@unique([churchId, phone])`). Normalized to E.164. |
+| `pinHash` | String? | Bcrypt hash of member 4-digit PIN for PWA authentication. Null when unclaimed. |
+| `pinFailedAttempts` | Int | Counter for consecutive invalid PIN attempts (locks at 5). |
+| `pinLockedUntil` | DateTime? | Lock expiry timestamp after 5 failed PIN attempts (15 min lockout). |
+
+Contact requirement: every `Person` record must have at least one of `email` or `phone`.
+
 `phone` is stored in E.164 format (`+2348034567890`). See `scripts/normalize-phones.ts` for the one-off migration of older values.
 
 ---
@@ -281,6 +293,33 @@ Belongs to
 
 ---
 
+## PersonRelationship (Phase 2)
+
+Represents family and relational connections between two people within the same church.
+
+| Field | Type | Purpose |
+|---|---|---|
+| `id` | String (UUID) | Primary key |
+| `churchId` | String | Belongs to Church |
+| `personId` | String | Source person describing the relationship |
+| `relatedPersonId` | String | The target person linked to |
+| `type` | `RelationshipType` | `SPOUSE \| PARENT \| CHILD \| SIBLING \| OTHER` |
+| `note` | String? (100) | Optional free text (e.g., "cousin", "guardian" for `OTHER`) |
+| `createdByPersonId` | String? | Member who created the relationship link, if member-created |
+| `createdByUserId` | String? | Staff user who linked the individuals in Olive, if staff-created |
+| `createdAt` | DateTime | When the link was established |
+
+Relationships & Constraints:
+- Belongs to Church (`onDelete: Cascade`)
+- Belongs to Person (`personId`, `onDelete: Cascade`)
+- Belongs to Related Person (`relatedPersonId`, `onDelete: Cascade`)
+- Optionally tracks creator (`createdByPersonId`, `onDelete: SetNull`)
+- Unique constraint: `@@unique([personId, relatedPersonId])`
+- Each connection is stored once. Inverse relationship is computed at query time (`PARENT` <-> `CHILD`, `SPOUSE` and `SIBLING` remain symmetric, `OTHER` preserves its note).
+- `onDelete: Cascade` ensures deleting a person removes only the relationship link row, never the related person.
+
+---
+
 ## MessageTemplate (Phase 2)
 
 Editable message text for staff outreach.
@@ -288,10 +327,10 @@ Editable message text for staff outreach.
 | Field | Type | Purpose |
 |---|---|---|
 | `channel` | `MessageChannel` | Defaults to `WHATSAPP` |
-| `purpose` | `OutreachPurpose` | `BIRTHDAY \| VISITOR_FOLLOW_UP \| PASTORAL_CHECK_IN` |
+| `purpose` | `OutreachPurpose` | `BIRTHDAY \| VISITOR_FOLLOW_UP \| PASTORAL_CHECK_IN \| PROFILE_LINK` |
 | `checkInReason` | `CheckInReason?` | Only for `PASTORAL_CHECK_IN`. Null suits any reason. |
 | `name` | String | Shown in the template picker |
-| `body` | Text | Up to 1,000 characters. Placeholders: `{{firstName}}`, `{{adminName}}`, `{{churchName}}` |
+| `body` | Text | Up to 1,000 characters. Placeholders: `{{firstName}}`, `{{adminName}}`, `{{churchName}}`, `{{profileLink}}` |
 | `isActive` | Boolean | Soft delete for templates already used in outreach |
 
 Belongs to Church.
@@ -304,10 +343,10 @@ Log of WhatsApp messages staff open from Dove. `EmailSendLog` stays the log for 
 
 | Field | Type | Purpose |
 |---|---|---|
-| `purpose` | `OutreachPurpose` | Why the message was sent |
+| `purpose` | `OutreachPurpose` | Why the message was sent (`BIRTHDAY \| VISITOR_FOLLOW_UP \| PASTORAL_CHECK_IN \| PROFILE_LINK`) |
 | `status` | `OutreachStatus` | `OPENED \| CONFIRMED_SENT \| NOT_SENT` |
 | `toPhone` | String | E.164 number at the time of sending |
-| `body` | Text | Final text, after any edits |
+| `body` | Text | Final text, after any edits (for `PROFILE_LINK`, tokens are redacted to `[profile link]`) |
 | `birthdayYear` | Int? | Set for birthday messages |
 | `checkInId` | String? | Related pastoral check-in |
 | `templateId` | String? | Template the text started from |

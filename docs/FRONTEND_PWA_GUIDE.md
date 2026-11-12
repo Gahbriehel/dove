@@ -698,3 +698,102 @@ export interface ApiErrorResponse {
   - Display `attemptsRemaining` or `lockedUntil` on errors.
 - [ ] **Sign Out (`POST /profile/logout`)**:
   - Call revocation endpoint and delete cookie.
+
+---
+
+## 11. Family Connections & Relative Management
+
+### 11.1 Identity & Data Model Principles
+- **Separate Identity**: Every individual is an independent `Person` in Dove. Adding a relative does **not** create a dependent or sub-profile.
+- **Unique Contacts**: Each person must have their own unique email and/or phone number. Sharing contact details with a family member is rejected.
+- **Ownership**: The member who created a relative's profile **cannot edit** that relative's details after creation. Only the relative themselves can edit their profile once they claim it.
+- **Unlinking**: Deleting a relationship removes only the link between the two people; it never deletes the relative's person record.
+
+### 11.2 Adding a Relative (`POST /profile/me/relatives`)
+Available on `/profile/family` or `/settings/family`.
+
+#### Form Fields:
+- `firstName`: string (required)
+- `lastName`: string (required)
+- `relationship`: `'SPOUSE' | 'PARENT' | 'CHILD' | 'SIBLING' | 'OTHER'` (required)
+- `relationshipNote`: string (optional, up to 100 chars, e.g. "Cousin" or "Guardian" when `OTHER`)
+- `email`: string (optional)
+- `phone`: string (optional)
+- `gender`: `'MALE' | 'FEMALE' | 'OTHER'` (optional)
+- `dateOfBirth`: `'YYYY-MM-DD'` (optional)
+
+> [!IMPORTANT]
+> At least one contact detail (`email` or `phone`) is required. If neither is provided, Dove returns `400` with code `CONTACT_REQUIRED`.
+
+#### Handling Taken Contact Details:
+If the entered email or phone is already taken by another person in the church, Dove returns `409 Conflict`:
+```json
+{
+  "statusCode": 409,
+  "message": "This email or phone number is already registered.",
+  "code": "CONTACT_ALREADY_REGISTERED"
+}
+```
+Display the generic message directly under the form. Do not reveal which field matched.
+
+#### Rate Limit:
+Each member may create up to 10 relatives per day. Exceeding this returns `429 Too Many Requests`.
+
+---
+
+### 11.3 Viewing Family Links (`GET /profile/me/relatives`)
+Returns the list of relatives connected to the authenticated member in both directions:
+```typescript
+export interface RelativeItem {
+  relationshipId: string;
+  person: {
+    id: string;
+    firstName: string;
+    lastName: string;
+  };
+  relationship: 'SPOUSE' | 'PARENT' | 'CHILD' | 'SIBLING' | 'OTHER';
+  relationshipNote?: string | null;
+  addedByMe: boolean;
+  claimed: boolean;
+  maskedEmail?: string | null; // e.g. "t***@example.com"
+  maskedPhone?: string | null; // e.g. "•••• ••• 7890"
+  canSendClaimLink: boolean;
+}
+```
+- Relationship types are automatically inverted when viewing incoming links (`PARENT` is shown as `CHILD`, and `CHILD` is shown as `PARENT`).
+- `claimed` indicates the relative has claimed their profile and set a PIN.
+- Relative records are read-only for the creator; no edit endpoint exists for members.
+
+---
+
+### 11.4 Inviting Phone-Only Relatives via WhatsApp (`POST /profile/me/relatives/:personId/claim-link`)
+When `canSendClaimLink` is `true` (`addedByMe` is true, the relative has not claimed their profile yet, and they have a phone number), the UI shows a **"Send Invite via WhatsApp"** button.
+
+#### Calling the Server Action:
+```typescript
+// server-actions/family.ts
+export async function sendRelativeClaimLink(personId: string) {
+  const token = await getSessionToken();
+  const res = await fetch(`${DOVE_API_URL}/profile/me/relatives/${personId}/claim-link`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || 'Failed to generate claim link');
+  return data; // { url, whatsappUrl, expiresAt }
+}
+```
+- The backend generates a **48-hour single-use onboarding token**.
+- The response returns `whatsappUrl` (pre-filled `https://wa.me/<digits>?text=...`).
+- The PWA opens `whatsappUrl` in a new tab / WhatsApp app so the member can message their relative directly.
+- Rate limit: 3 claim links per day per target relative (`429`).
+- Errors: `403` `NOT_CREATOR`, `409` `ALREADY_CLAIMED`, `409` `NO_PHONE`.
+
+---
+
+### 11.5 Removing a Family Link (`DELETE /profile/me/relatives/:relationshipId`)
+Either person in the link can remove the relationship.
+- Provide a confirmation modal: *"Remove [Name] from your family links? This will disconnect the relationship, but will not delete their church profile."*
+- Calls `DELETE /profile/me/relatives/:relationshipId`.
+- Updates the list upon success.
+

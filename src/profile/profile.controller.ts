@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -21,6 +22,7 @@ import {
 import { Public } from '../common/decorators/public.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { ClaimProfileDto } from './dto/claim-profile.dto';
+import { CreateRelativeDto } from './dto/create-relative.dto';
 import { MemberLoginDto } from './dto/member-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePinDto } from './dto/change-pin.dto';
@@ -160,6 +162,110 @@ export class ProfileController {
     },
   ) {
     return this.profileService.logout(req.member, req.rawToken);
+  }
+
+  @Post('me/relatives')
+  @UseGuards(MemberAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Relative added successfully')
+  @ApiOperation({
+    summary: 'Add a new relative',
+    description:
+      'Creates a new person record and links them to the signed-in member. Requires email or phone.',
+  })
+  @ApiResponse({ status: 201, description: 'Relative added successfully' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Missing contact details (code: CONTACT_REQUIRED) or invalid input',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Email or phone already registered (code: CONTACT_ALREADY_REGISTERED)',
+  })
+  async addRelative(
+    @CurrentMember() member: ActiveMemberData,
+    @Body() dto: CreateRelativeDto,
+  ) {
+    return this.profileService.addRelative(member.sub, member.churchId, dto);
+  }
+
+  @Get('me/relatives')
+  @UseGuards(MemberAuthGuard)
+  @ApiBearerAuth()
+  @ResponseMessage('Relatives retrieved successfully')
+  @ApiOperation({
+    summary: 'List my linked relatives',
+    description: 'Returns linked family members in both directions.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Relatives retrieved successfully',
+  })
+  async listRelatives(@CurrentMember() member: ActiveMemberData) {
+    return this.profileService.listMyRelatives(member.sub, member.churchId);
+  }
+
+  @Delete('me/relatives/:relationshipId')
+  @UseGuards(MemberAuthGuard)
+  @ApiBearerAuth()
+  @ResponseMessage('Relationship removed successfully')
+  @ApiOperation({
+    summary: 'Remove a family link',
+    description:
+      'Removes a relationship link between the member and a relative. Allowed for either party.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Relationship removed successfully',
+  })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Relationship not found' })
+  async deleteRelative(
+    @CurrentMember() member: ActiveMemberData,
+    @Param('relationshipId') relationshipId: string,
+  ) {
+    return this.profileService.deleteMyRelative(
+      member.sub,
+      member.churchId,
+      relationshipId,
+    );
+  }
+
+  @Post('me/relatives/:personId/claim-link')
+  @UseGuards(MemberAuthGuard)
+  @ApiBearerAuth()
+  @HttpCode(HttpStatus.OK)
+  @ResponseMessage('Claim link generated successfully')
+  @ApiOperation({
+    summary: 'Generate WhatsApp claim link for a created relative',
+    description:
+      'Issues a single-use 48-hour profile token and prefilled WhatsApp URL to send to an unclaimed relative with a phone number.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Claim link generated successfully',
+  })
+  @ApiResponse({
+    status: 403,
+    description: 'Not the member who created this relative (code: NOT_CREATOR)',
+  })
+  @ApiResponse({
+    status: 409,
+    description:
+      'Already claimed (code: ALREADY_CLAIMED) or no phone (code: NO_PHONE)',
+  })
+  async createRelativeClaimLink(
+    @CurrentMember() member: ActiveMemberData,
+    @Param('personId') personId: string,
+  ) {
+    return this.profileService.createRelativeClaimLink(
+      member.sub,
+      member.churchId,
+      personId,
+    );
   }
 
   @Get(':token')

@@ -19,10 +19,12 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { ActiveUserData } from '../common/decorators/current-user.decorator';
 import { ResponseMessage } from '../common/decorators/response-message.decorator';
 import { Roles } from '../common/decorators/roles.decorator';
 import { buildCsv, csvFilename, sendCsv } from '../common/utils/csv.util';
 import { CreatePersonDto } from './dto/create-person.dto';
+import { LinkPeopleDto } from './dto/link-people.dto';
 import { PromotePersonDto } from './dto/promote-person.dto';
 import { QueryPersonMessagesDto } from './dto/query-person-messages.dto';
 import { QueryPersonDto } from './dto/query-person.dto';
@@ -161,5 +163,63 @@ export class PeopleController {
     @CurrentUser('churchId') userChurchId: string,
   ) {
     return this.peopleService.remove(id, userChurchId);
+  }
+
+  @Get(':id/relatives')
+  @ResponseMessage('Relatives retrieved successfully')
+  @ApiOperation({ summary: "Get a person's family links" })
+  @ApiResponse({
+    status: 200,
+    description: 'Relatives retrieved successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Person not found' })
+  async listRelatives(
+    @Param('id') id: string,
+    @CurrentUser('churchId') userChurchId: string,
+  ) {
+    return this.peopleService.listRelatives(id, userChurchId);
+  }
+
+  @Post(':id/relatives')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @HttpCode(HttpStatus.CREATED)
+  @ResponseMessage('Relationship created successfully')
+  @ApiOperation({ summary: 'Link two existing people' })
+  @ApiResponse({
+    status: 201,
+    description: 'Relationship created successfully',
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Invalid input or self-linking',
+  })
+  @ApiResponse({ status: 404, description: 'Person not found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Relationship already exists',
+  })
+  async linkRelatives(
+    @Param('id') id: string,
+    @Body() dto: LinkPeopleDto,
+    @CurrentUser() user: ActiveUserData,
+  ) {
+    return this.peopleService.linkRelatives(id, dto, user);
+  }
+
+  @Delete(':id/relatives/:relationshipId')
+  @Roles('SUPER_ADMIN', 'ADMIN')
+  @ResponseMessage('Relationship removed successfully')
+  @ApiOperation({ summary: 'Remove a relationship link' })
+  @ApiResponse({
+    status: 200,
+    description: 'Relationship removed successfully',
+  })
+  @ApiResponse({ status: 404, description: 'Relationship not found' })
+  async deleteRelative(
+    @Param('id') id: string,
+    @Param('relationshipId') relationshipId: string,
+    @CurrentUser('churchId') userChurchId: string,
+  ) {
+    return this.peopleService.deleteRelative(id, relationshipId, userChurchId);
   }
 }

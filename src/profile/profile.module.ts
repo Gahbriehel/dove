@@ -6,6 +6,7 @@ import { DepartmentsModule } from '../departments/departments.module';
 import { EmailModule } from '../email/email.module';
 import { PrismaModule } from '../prisma/prisma.module';
 import { ClaimRateLimiter } from './claim-rate-limiter';
+import { RelativeRateLimiter } from './relative-rate-limiter';
 import { MemberSessionService } from './member-session.service';
 import { MemberAuthGuard } from './guards/member-auth.guard';
 import { ProfileController } from './profile.controller';
@@ -26,9 +27,15 @@ import { ProfileService } from './profile.service';
   providers: [
     ProfileService,
     ClaimRateLimiter,
+    RelativeRateLimiter,
     MemberSessionService,
     MemberAuthGuard,
   ],
-  exports: [ProfileService, MemberSessionService, MemberAuthGuard],
+  exports: [
+    ProfileService,
+    MemberSessionService,
+    MemberAuthGuard,
+    RelativeRateLimiter,
+  ],
 })
 export class ProfileModule {}

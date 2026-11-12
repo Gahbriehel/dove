@@ -4,7 +4,10 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import * as crypto from 'crypto';
 import {
   CheckInStatus,
   FollowUpStatus,
@@ -33,6 +36,7 @@ import { CreateOutreachDto } from './dto/create-outreach.dto';
 import { PreviewOutreachDto } from './dto/preview-outreach.dto';
 import { QueryOutreachDto } from './dto/query-outreach.dto';
 import { QueryTodayDto } from './dto/query-today.dto';
+import { PROFILE_WHATSAPP_LINK_TTL_MS } from '../profile/profile.service';
 import {
   OutreachWarning,
   OutreachWarningCode,
@@ -60,6 +64,7 @@ interface PreparedMessage {
     phone: string | null;
     whatsappOptOut: boolean;
     dateOfBirth: Date | null;
+    pinHash?: string | null;
   };
   toPhone: string | null;
   warnings: OutreachWarningCode[];
@@ -70,7 +75,10 @@ interface PreparedMessage {
 
 @Injectable()
 export class OutreachService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly configService?: ConfigService,
+  ) {}
 
   async preview(dto: PreviewOutreachDto, user: ActiveUserData) {
     const churchId = await this.resolveChurchId(user);
@@ -103,6 +111,7 @@ export class OutreachService {
           firstName: person.firstName,
           adminName: resolveAdminName(sender),
           churchName: resolveChurchLabel(church),
+          profileLink: '[profile link]',
         })
       : null;
 
@@ -132,6 +141,15 @@ export class OutreachService {
     const churchId = await this.resolveChurchId(user);
     const prepared = await this.prepare(dto, churchId);
     const { person, toPhone } = prepared;
+
+    if (dto.purpose === OutreachPurpose.PROFILE_LINK) {
+      if (person.pinHash) {
+        throw new ConflictException({
+          message: `${person.firstName} has already claimed their profile`,
+          code: 'ALREADY_CLAIMED',
+        });
+      }
+    }
 
     if (person.whatsappOptOut) {
       throw new ConflictException({
@@ -163,7 +181,49 @@ export class OutreachService {
       templateId = template.id;
     }
 
-    return this.prisma.outreachMessage.create({
+    let storedBody = dto.body;
+    let sendBody = dto.body;
+
+    if (dto.purpose === OutreachPurpose.PROFILE_LINK) {
+      const token = crypto.randomBytes(32).toString('hex');
+      const expiresAt = new Date(Date.now() + PROFILE_WHATSAPP_LINK_TTL_MS);
+
+      await this.prisma.person.update({
+        where: { id: person.id },
+        data: {
+          profileToken: token,
+          profileTokenExpiresAt: expiresAt,
+          profileTokenOpenedAt: null,
+        },
+      });
+
+      const appUrl =
+        this.configService?.get<string>('appUrl')?.replace(/\/+$/, '') ||
+        'http://localhost:3000';
+      const profileBaseUrl =
+        this.configService?.get<string>('profileUrl')?.replace(/\/+$/, '') ||
+        `${appUrl}/profile`;
+      const linkUrl = `${profileBaseUrl}/${token}`;
+
+      if (/\{\{\s*profileLink\s*\}\}/i.test(dto.body)) {
+        sendBody = dto.body.replace(/\{\{\s*profileLink\s*\}\}/gi, linkUrl);
+        storedBody = dto.body.replace(
+          /\{\{\s*profileLink\s*\}\}/gi,
+          '[profile link]',
+        );
+      } else if (dto.body.includes('[profile link]')) {
+        sendBody = dto.body.replaceAll('[profile link]', linkUrl);
+        storedBody = dto.body;
+      } else if (dto.body.includes(linkUrl)) {
+        sendBody = dto.body;
+        storedBody = dto.body.replaceAll(linkUrl, '[profile link]');
+      } else {
+        sendBody = `${dto.body}\n\n${linkUrl}`;
+        storedBody = `${dto.body}\n\n[profile link]`;
+      }
+    }
+
+    const created = await this.prisma.outreachMessage.create({
       data: {
         churchId,
         personId: person.id,
@@ -174,9 +234,17 @@ export class OutreachService {
         birthdayYear: prepared.birthdayYear,
         templateId,
         toPhone,
-        body: dto.body,
+        body: storedBody,
       },
     });
+
+    const digits = toWhatsAppDigits(toPhone);
+    const whatsappUrl = `https://wa.me/${digits}?text=${encodeURIComponent(sendBody)}`;
+
+    return {
+      ...created,
+      whatsappUrl,
+    };
   }
 
   async confirm(id: string, dto: ConfirmOutreachDto, user: ActiveUserData) {
@@ -341,6 +409,7 @@ export class OutreachService {
         phone: true,
         whatsappOptOut: true,
         dateOfBirth: true,
+        pinHash: true,
       },
     });
 
@@ -520,6 +589,7 @@ export class OutreachService {
         phone: true,
         whatsappOptOut: true,
         dateOfBirth: true,
+        pinHash: true,
       },
     });
     if (!person) {

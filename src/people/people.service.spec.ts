@@ -1,10 +1,17 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+/* eslint-disable @typescript-eslint/no-unsafe-assignment */
+import {
+  BadRequestException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import {
   CheckInStatus,
   FollowUpStatus,
   Gender,
   MembershipStatus,
+  Prisma,
+  RelationshipType,
 } from '@prisma/client';
 import { callArg } from '../common/testing/mock.util';
 import { PrismaService } from '../prisma/prisma.service';
@@ -29,6 +36,13 @@ describe('PeopleService', () => {
     birthdayGreeting: { findMany: jest.Mock };
     outreachMessage: { findMany: jest.Mock };
     user: { findMany: jest.Mock };
+    personRelationship: {
+      create: jest.Mock;
+      findMany: jest.Mock;
+      findFirst: jest.Mock;
+      findUnique: jest.Mock;
+      delete: jest.Mock;
+    };
   };
 
   beforeEach(async () => {
@@ -49,6 +63,13 @@ describe('PeopleService', () => {
       birthdayGreeting: { findMany: jest.fn().mockResolvedValue([]) },
       outreachMessage: { findMany: jest.fn().mockResolvedValue([]) },
       user: { findMany: jest.fn().mockResolvedValue([]) },
+      personRelationship: {
+        create: jest.fn(),
+        findMany: jest.fn(),
+        findFirst: jest.fn(),
+        findUnique: jest.fn(),
+        delete: jest.fn(),
+      },
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -123,6 +144,7 @@ describe('PeopleService', () => {
         {
           firstName: 'Jane',
           lastName: 'Member',
+          email: 'jane.member@example.com',
           membershipStatus: MembershipStatus.MEMBER,
         },
         'church-1',
@@ -133,11 +155,88 @@ describe('PeopleService', () => {
         data: {
           firstName: 'Jane',
           lastName: 'Member',
+          email: 'jane.member@example.com',
           churchId: 'church-1',
           membershipStatus: MembershipStatus.MEMBER,
           followUpStatus: null,
           dateOfBirth: null,
         },
+      });
+    });
+
+    it('rejects with CONTACT_REQUIRED when neither email nor phone is provided', async () => {
+      prismaMock.church.findUnique.mockResolvedValue({ id: 'church-1' });
+
+      await expect(
+        service.create({ firstName: 'John', lastName: 'Doe' }, 'church-1'),
+      ).rejects.toMatchObject({
+        response: { code: 'CONTACT_REQUIRED' },
+      });
+      expect(prismaMock.person.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects with CONTACT_ALREADY_REGISTERED when email already exists', async () => {
+      prismaMock.church.findUnique.mockResolvedValue({ id: 'church-1' });
+      prismaMock.person.findFirst.mockResolvedValue({ id: 'existing-person' });
+
+      await expect(
+        service.create(
+          {
+            firstName: 'John',
+            lastName: 'Doe',
+            email: 'JOHN.DOE@EXAMPLE.COM',
+          },
+          'church-1',
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'CONTACT_ALREADY_REGISTERED' },
+      });
+      expect(prismaMock.person.findFirst).toHaveBeenCalledWith({
+        where: { churchId: 'church-1', email: 'john.doe@example.com' },
+        select: { id: true },
+      });
+      expect(prismaMock.person.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects with CONTACT_ALREADY_REGISTERED when phone already exists', async () => {
+      prismaMock.church.findUnique.mockResolvedValue({ id: 'church-1' });
+      prismaMock.person.findFirst.mockResolvedValue({ id: 'existing-person' });
+
+      await expect(
+        service.create(
+          {
+            firstName: 'John',
+            lastName: 'Doe',
+            phone: '08034567890',
+          },
+          'church-1',
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'CONTACT_ALREADY_REGISTERED' },
+      });
+      expect(prismaMock.person.create).not.toHaveBeenCalled();
+    });
+
+    it('handles concurrent P2002 conflict and throws CONTACT_ALREADY_REGISTERED', async () => {
+      prismaMock.church.findUnique.mockResolvedValue({ id: 'church-1' });
+      prismaMock.person.findFirst.mockResolvedValue(null);
+      const p2002 = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        { code: 'P2002', clientVersion: '6.0.0' },
+      );
+      prismaMock.person.create.mockRejectedValue(p2002);
+
+      await expect(
+        service.create(
+          {
+            firstName: 'John',
+            lastName: 'Doe',
+            email: 'john@example.com',
+          },
+          'church-1',
+        ),
+      ).rejects.toMatchObject({
+        response: { code: 'CONTACT_ALREADY_REGISTERED' },
       });
     });
 
@@ -296,6 +395,30 @@ describe('PeopleService', () => {
       );
     });
 
+    it('never exposes PIN or token columns and returns claimed', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        firstName: 'Jane',
+        lastName: 'Doe',
+        pinHash: 'secret-hash',
+        pinFailedAttempts: 2,
+        pinLockedUntil: null,
+        profileToken: 'tok',
+        profileTokenExpiresAt: null,
+        profileTokenOpenedAt: null,
+        registrations: [],
+        departmentMemberships: [],
+        pastoralCheckIns: [],
+      });
+
+      const result = await service.findOne('person-1', 'church-1');
+
+      expect(result).not.toHaveProperty('pinHash');
+      expect(result).not.toHaveProperty('pinFailedAttempts');
+      expect(result).not.toHaveProperty('profileToken');
+      expect(result.claimed).toBe(true);
+    });
+
     it('should throw NotFoundException if person is not found in church', async () => {
       prismaMock.person.findFirst.mockResolvedValue(null);
 
@@ -354,6 +477,59 @@ describe('PeopleService', () => {
           membershipStatus: MembershipStatus.MEMBER,
           followUpStatus: null,
         },
+      });
+    });
+
+    it('rejects with CONTACT_REQUIRED when update leaves person with neither email nor phone', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        churchId: 'church-1',
+        email: 'test@example.com',
+        phone: null,
+      });
+
+      await expect(
+        service.update('person-1', { email: '' }, 'church-1'),
+      ).rejects.toMatchObject({
+        response: { code: 'CONTACT_REQUIRED' },
+      });
+      expect(prismaMock.person.update).not.toHaveBeenCalled();
+    });
+
+    it('succeeds when updating a person who already has neither contact details if contact fields are not touched', async () => {
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        churchId: 'church-1',
+        email: null,
+        phone: null,
+        firstName: 'Old',
+        lastName: 'Name',
+      });
+      prismaMock.person.update.mockResolvedValue({
+        id: 'person-1',
+        firstName: 'New',
+      });
+
+      await expect(
+        service.update('person-1', { firstName: 'New' }, 'church-1'),
+      ).resolves.toBeDefined();
+      expect(prismaMock.person.update).toHaveBeenCalled();
+    });
+
+    it('rejects with CONTACT_ALREADY_REGISTERED when updating phone to taken one', async () => {
+      prismaMock.person.findFirst
+        .mockResolvedValueOnce({
+          id: 'person-1',
+          churchId: 'church-1',
+          phone: '+2348011111111',
+          email: 'test@example.com',
+        })
+        .mockResolvedValueOnce({ id: 'person-2' }); // conflict search
+
+      await expect(
+        service.update('person-1', { phone: '08034567890' }, 'church-1'),
+      ).rejects.toMatchObject({
+        response: { code: 'CONTACT_ALREADY_REGISTERED' },
       });
     });
   });
@@ -534,7 +710,11 @@ describe('PeopleService', () => {
     });
 
     it('normalises the phone number on update and clears it when blank', async () => {
-      prismaMock.person.findFirst.mockResolvedValue({ id: 'person-1' });
+      prismaMock.person.findFirst.mockResolvedValue({
+        id: 'person-1',
+        churchId: 'church-1',
+        email: 'person@example.com',
+      });
       prismaMock.person.update.mockResolvedValue({ id: 'person-1' });
 
       await service.update(
@@ -725,6 +905,205 @@ describe('PeopleService', () => {
       await expect(
         service.getMessages('nope', {}, 'church-1'),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('relatives', () => {
+    describe('listRelatives', () => {
+      it("lists relatives and formats inverse relationship from person's perspective", async () => {
+        prismaMock.person.findFirst.mockResolvedValue({ id: 'person-1' });
+        prismaMock.personRelationship.findMany.mockResolvedValue([
+          {
+            id: 'rel-1',
+            churchId: 'church-1',
+            personId: 'person-1',
+            relatedPersonId: 'person-2',
+            type: RelationshipType.CHILD,
+            note: null,
+            createdByUserId: 'u-1',
+            relatedPerson: {
+              id: 'person-2',
+              firstName: 'Child',
+              lastName: 'One',
+              email: 'child@example.com',
+              phone: '+2348034567890',
+              pinHash: null,
+            },
+            person: { id: 'person-1' },
+          },
+          {
+            id: 'rel-2',
+            churchId: 'church-1',
+            personId: 'person-3',
+            relatedPersonId: 'person-1',
+            type: RelationshipType.PARENT,
+            note: null,
+            createdByUserId: 'u-1',
+            person: {
+              id: 'person-3',
+              firstName: 'Father',
+              lastName: 'One',
+              email: 'father@example.com',
+              phone: '+2348031234567',
+              pinHash: 'hashed',
+            },
+            relatedPerson: { id: 'person-1' },
+          },
+        ]);
+
+        const res = await service.listRelatives('person-1', 'church-1');
+
+        expect(res.items).toHaveLength(2);
+        // person-1 to person-2: CHILD
+        expect(res.items[0]).toMatchObject({
+          relationshipId: 'rel-1',
+          relationship: RelationshipType.CHILD,
+          person: { id: 'person-2', firstName: 'Child' },
+          claimed: false,
+          maskedEmail: 'c***@example.com',
+          maskedPhone: '•••• ••• 7890',
+          canSendClaimLink: true,
+        });
+        // person-3 to person-1: person-3 is PARENT to person-1, so person-3 IS PARENT to person-1
+        // wait: rel-2 has personId: person-3, relatedPersonId: person-1, type: PARENT (person-1 is person-3's PARENT)
+        // so person-3 is person-1's CHILD!
+        expect(res.items[1]).toMatchObject({
+          relationshipId: 'rel-2',
+          relationship: RelationshipType.CHILD,
+          person: { id: 'person-3', firstName: 'Father' },
+          claimed: true,
+          maskedEmail: 'f***@example.com',
+          maskedPhone: '•••• ••• 4567',
+          canSendClaimLink: false,
+        });
+      });
+
+      it('throws NotFoundException if target person not found', async () => {
+        prismaMock.person.findFirst.mockResolvedValue(null);
+        await expect(
+          service.listRelatives('missing', 'church-1'),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      });
+    });
+
+    describe('linkRelatives', () => {
+      const user = {
+        sub: 'u-1',
+        email: 'admin@example.com',
+        roles: ['ADMIN'],
+        churchId: 'church-1',
+      };
+
+      it('links two existing members and records createdByUserId', async () => {
+        prismaMock.person.findFirst
+          .mockResolvedValueOnce({ id: 'person-1' })
+          .mockResolvedValueOnce({ id: 'person-2' })
+          .mockResolvedValueOnce(null); // no existing link
+        prismaMock.personRelationship.create.mockResolvedValue({
+          id: 'rel-1',
+          type: RelationshipType.SPOUSE,
+          note: null,
+          relatedPerson: {
+            id: 'person-2',
+            firstName: 'Ada',
+            lastName: 'Adeyemi',
+            email: 'ada@example.com',
+            phone: null,
+            pinHash: null,
+          },
+        });
+
+        const res = await service.linkRelatives(
+          'person-1',
+          {
+            relatedPersonId: 'person-2',
+            relationship: RelationshipType.SPOUSE,
+          },
+          user,
+        );
+
+        expect(res.relationshipId).toBe('rel-1');
+        expect(res.relationship).toBe(RelationshipType.SPOUSE);
+        expect(prismaMock.personRelationship.create).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              churchId: 'church-1',
+              personId: 'person-1',
+              relatedPersonId: 'person-2',
+              type: RelationshipType.SPOUSE,
+              createdByUserId: 'u-1',
+            }),
+          }),
+        );
+      });
+
+      it('rejects linking a person to themselves', async () => {
+        await expect(
+          service.linkRelatives(
+            'person-1',
+            {
+              relatedPersonId: 'person-1',
+              relationship: RelationshipType.SPOUSE,
+            },
+            user,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it('rejects duplicate link between the same two people in either direction', async () => {
+        prismaMock.person.findFirst
+          .mockResolvedValueOnce({ id: 'person-1' })
+          .mockResolvedValueOnce({ id: 'person-2' });
+        prismaMock.personRelationship.findFirst.mockResolvedValue({
+          id: 'existing-rel',
+        });
+
+        await expect(
+          service.linkRelatives(
+            'person-1',
+            {
+              relatedPersonId: 'person-2',
+              relationship: RelationshipType.SPOUSE,
+            },
+            user,
+          ),
+        ).rejects.toBeInstanceOf(ConflictException);
+      });
+    });
+
+    describe('deleteRelative', () => {
+      it('removes the link row', async () => {
+        prismaMock.personRelationship.findUnique.mockResolvedValue({
+          id: 'rel-1',
+          churchId: 'church-1',
+          personId: 'person-1',
+          relatedPersonId: 'person-2',
+        });
+        prismaMock.personRelationship.delete.mockResolvedValue({ id: 'rel-1' });
+
+        const res = await service.deleteRelative(
+          'person-1',
+          'rel-1',
+          'church-1',
+        );
+        expect(res.message).toBe('Relationship removed successfully');
+        expect(prismaMock.personRelationship.delete).toHaveBeenCalledWith({
+          where: { id: 'rel-1' },
+        });
+      });
+
+      it('throws NotFoundException if relationship does not involve specified person', async () => {
+        prismaMock.personRelationship.findUnique.mockResolvedValue({
+          id: 'rel-1',
+          churchId: 'church-1',
+          personId: 'other-1',
+          relatedPersonId: 'other-2',
+        });
+
+        await expect(
+          service.deleteRelative('person-1', 'rel-1', 'church-1'),
+        ).rejects.toBeInstanceOf(NotFoundException);
+      });
     });
   });
 });

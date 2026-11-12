@@ -49,7 +49,9 @@ export class RegistrationsService {
       googleCalendarSync,
     } = registerDto;
 
-    if (!email && !rawPhone) {
+    const normalizedEmail = email?.trim().toLowerCase() || null;
+
+    if (!normalizedEmail && !rawPhone) {
       throw new BadRequestException('Either email or phone must be provided');
     }
 
@@ -60,7 +62,7 @@ export class RegistrationsService {
         `Ignoring invalid phone number on registration for event ${eventId}`,
       );
     }
-    if (!email && !phone) {
+    if (!normalizedEmail && !phone) {
       throw new BadRequestException('Please enter a valid phone number');
     }
 
@@ -100,9 +102,9 @@ export class RegistrationsService {
         let personByEmail = null;
         let personByPhone = null;
 
-        if (email) {
+        if (normalizedEmail) {
           personByEmail = await tx.person.findFirst({
-            where: { churchId, email },
+            where: { churchId, email: normalizedEmail },
           });
         }
 
@@ -133,7 +135,7 @@ export class RegistrationsService {
               churchId,
               firstName,
               lastName,
-              email: email || null,
+              email: normalizedEmail,
               phone: phone || null,
               gender: gender || null,
               dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
